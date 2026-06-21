@@ -1,0 +1,1 @@
+"""Clinical Auditor API application."""
