@@ -13,12 +13,14 @@ class Settings(BaseSettings):
     fake_doctor_id: str = "dev-doctor-001"
 
     gemini_api_key: str = ""
-    gemini_model: str = ""
+    gemini_model: str = "gemini-2.0-flash"
     gemini_enabled: bool = False
+    gemini_temperature: float = 0.0
+    gemini_timeout_seconds: int = 60
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
-    qdrant_medical_evidence_collection: str = "medical_evidence"
+    qdrant_medical_evidence_collection: str = "clinical_evidence"
     qdrant_doctor_memory_collection: str = "doctor_memory"
 
     embedding_model: str = "intfloat/multilingual-e5-base"

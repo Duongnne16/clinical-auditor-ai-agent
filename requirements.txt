@@ -5,6 +5,8 @@ sqlalchemy
 qdrant-client
 sentence-transformers
 httpx
+requests
 beautifulsoup4
+rapidfuzz
 google-genai
 pytest
