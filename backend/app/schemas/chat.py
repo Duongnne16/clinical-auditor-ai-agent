@@ -1,6 +1,11 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-from backend.app.schemas.report import CLINICAL_DISCLAIMER
+CHAT_DISCLAIMER = (
+    "Thông tin chỉ có mục đích hỗ trợ tra cứu chuyên môn, không thay thế "
+    "quyết định của bác sĩ/dược sĩ."
+)
 
 
 class ChatRequest(BaseModel):
@@ -11,5 +16,9 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     doctor_id: str
     message: str
+    answer: str | None = None
     intent: str | None = None
-    disclaimer: str = CLINICAL_DISCLAIMER
+    normalized_drugs: list[dict[str, Any]] = Field(default_factory=list)
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    disclaimer: str = CHAT_DISCLAIMER
