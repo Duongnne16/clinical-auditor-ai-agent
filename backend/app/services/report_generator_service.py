@@ -5,19 +5,44 @@ from typing import Any, Iterable
 
 
 SAFETY_DISCLAIMER = (
-    "Báo cáo này chỉ nhằm hỗ trợ bác sĩ/dược sĩ kiểm tra đơn thuốc "
-    "và không thay thế quyết định chuyên môn. Không sử dụng báo cáo này "
-    "để bệnh nhân tự ý ngừng thuốc, thay đổi thuốc hoặc thay đổi liều."
+    "Báo cáo này chỉ nhằm hỗ trợ bác sĩ/dược sĩ rà soát đơn thuốc dựa trên "
+    "dữ liệu hiện có và không thay thế quyết định chuyên môn. Bác sĩ/dược sĩ "
+    "là người chịu trách nhiệm đánh giá cuối cùng dựa trên tình trạng lâm sàng "
+    "thực tế của bệnh nhân."
 )
 
 CONTEXT_READY_SUMMARY = (
-    "Đã chuẩn bị bằng chứng và ngữ cảnh kiểm tra đơn thuốc, "
-    "nhưng chưa chạy phân tích nguy cơ."
+    "Hệ thống đã chuẩn bị bằng chứng và ngữ cảnh để bác sĩ/dược sĩ rà soát."
 )
 
 NO_SUPPORTED_RISK_SUMMARY = (
-    "Không có cảnh báo nguy cơ có bằng chứng hợp lệ trong phạm vi dữ liệu đã truy xuất."
+    "Trong phạm vi dữ liệu đã truy xuất, hệ thống chưa ghi nhận điểm cần rà soát có bằng chứng phù hợp."
 )
+
+DOCTOR_FACING_MAPPING_WARNING = (
+    "Một số dòng thuốc chưa được hệ thống nhận diện chắc chắn, cần rà soát lại."
+)
+DECISIVE_REPLACEMENTS = (
+    (
+        r"(?i)đơn thuốc\s+(?:không\s+)?an toàn",
+        "đơn thuốc cần được bác sĩ/dược sĩ rà soát",
+    ),
+    (r"(?i)không\s+dùng\s+được", "cần rà soát trước khi sử dụng"),
+    (r"(?i)dùng\s+được", "cần được đánh giá theo bối cảnh lâm sàng"),
+    (r"(?i)ngừng\s+thuốc", "rà soát thuốc"),
+    (r"(?i)đổi\s+thuốc", "cân nhắc phương án xử trí phù hợp"),
+    (r"(?i)tăng\s+liều", "rà soát liều"),
+    (r"(?i)giảm\s+liều", "rà soát liều"),
+)
+TECHNICAL_MAPPING_WARNINGS = {
+    "no_mapping_found",
+    "drug_mapping_not_found",
+    "drug_or_ingredient_not_found",
+    "ingredient_evidence_requires_review",
+    "safety_mapping_requires_review",
+    "safety_unresolved_medications",
+    "some_medications_require_review",
+}
 
 
 def _deduplicate(values: Iterable[str]) -> list[str]:
@@ -41,6 +66,20 @@ def _truncate(text: str, max_length: int) -> str:
     if max_length <= 1:
         return text[:max_length]
     return text[: max_length - 1].rstrip() + "…"
+
+
+def _doctor_safe_text(value: Any) -> str:
+    text = str(value or "")
+    for pattern, replacement in DECISIVE_REPLACEMENTS:
+        text = re.sub(pattern, replacement, text)
+    return text
+
+
+def _doctor_facing_warnings(warnings: list[str]) -> list[str]:
+    messages: list[str] = []
+    if any(warning in TECHNICAL_MAPPING_WARNINGS for warning in warnings):
+        messages.append(DOCTOR_FACING_MAPPING_WARNING)
+    return _deduplicate(messages)
 
 
 class ReportGeneratorService:
@@ -94,6 +133,7 @@ class ReportGeneratorService:
                 {
                     "raw_name": medication.get("raw_name"),
                     "raw_line": medication.get("raw_line"),
+                    "instruction": medication.get("instruction"),
                     "generic_text": medication.get("generic_text"),
                     "brand_text": medication.get("brand_text"),
                     "mapping_status": medication.get("mapping_status"),
@@ -242,21 +282,31 @@ class ReportGeneratorService:
         warnings: list[str],
         errors: list[str],
     ) -> dict[str, Any]:
+        safe_risk_items = []
+        for item in risk_items:
+            copied = dict(item)
+            for field in ("title", "explanation", "recommendation"):
+                if copied.get(field):
+                    copied[field] = _doctor_safe_text(copied[field])
+            safe_risk_items.append(copied)
+
+        deduped_warnings = _deduplicate(warnings)
         report = {
             "status": status,
             "report_type": "prescription_audit",
             "audience": "doctor_or_pharmacist",
             "overall_risk_level": overall_risk_level,
-            "summary": summary,
+            "summary": _doctor_safe_text(summary),
             "patient_context": patient_context or {},
             "medication_summary": medication_summary,
             "medications_requiring_review": medications_requiring_review,
-            "risk_items": risk_items,
+            "risk_items": safe_risk_items,
             "missing_information": missing_information,
             "evidence_sources": evidence_sources,
             "source_count": len(evidence_sources),
             "safety_disclaimer": SAFETY_DISCLAIMER,
-            "warnings": _deduplicate(warnings),
+            "warnings": deduped_warnings,
+            "doctor_facing_warnings": _doctor_facing_warnings(deduped_warnings),
             "errors": _deduplicate(errors),
         }
         report["markdown_report"] = self.build_markdown_report(report)

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Callable, Iterable
 
+from backend.app.services.doctor_report_composer_service import (
+    DoctorReportComposerService,
+)
 from backend.app.services.gemini_risk_analyzer_client import GeminiRiskAnalyzerClient
+from backend.app.services.prescription_document_parser import PrescriptionDocumentParser
 from backend.app.services.prescription_check_service import PrescriptionCheckService
 from backend.app.services.report_generator_service import ReportGeneratorService
 from backend.app.services.risk_analyzer_service import RiskAnalyzerService
@@ -36,7 +40,9 @@ class PrescriptionAuditService:
         self,
         prescription_check_service: Any | None = None,
         report_generator_service: Any | None = None,
+        doctor_report_composer_service: Any | None = None,
         safety_layer_service: Any | None = None,
+        prescription_document_parser: Any | None = None,
         risk_analyzer_service_factory: Callable[..., Any] | None = None,
         gemini_client_factory: Callable[[], Any] | None = None,
     ) -> None:
@@ -46,11 +52,41 @@ class PrescriptionAuditService:
         self.report_generator_service = (
             report_generator_service or ReportGeneratorService()
         )
+        self.doctor_report_composer_service = (
+            doctor_report_composer_service or DoctorReportComposerService()
+        )
         self.safety_layer_service = safety_layer_service or SafetyLayerService()
+        self.prescription_document_parser = (
+            prescription_document_parser or PrescriptionDocumentParser()
+        )
         self.risk_analyzer_service_factory = (
             risk_analyzer_service_factory or RiskAnalyzerService
         )
         self.gemini_client_factory = gemini_client_factory or GeminiRiskAnalyzerClient
+
+    @staticmethod
+    def _meaningful_context_value(value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return value.strip().casefold() not in {"", "unknown", "not provided"}
+        if isinstance(value, (list, dict)):
+            return bool(value)
+        return True
+
+    @classmethod
+    def _merge_patient_context(
+        cls,
+        parsed_context: dict[str, Any],
+        incoming_context: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        merged = dict(parsed_context)
+        if not isinstance(incoming_context, dict):
+            return merged
+        for key, value in incoming_context.items():
+            if cls._meaningful_context_value(value):
+                merged[key] = value
+        return merged
 
     @staticmethod
     def _top_level_status(report: dict[str, Any] | None) -> str:
@@ -112,6 +148,30 @@ class PrescriptionAuditService:
             raise ValueError("top_k_per_type must be greater than 0")
 
         context = patient_context or {}
+        parser_warnings: list[str] = []
+        parsed_document = self.prescription_document_parser.parse(prescription_text)
+        if parsed_document.get("applied") is True:
+            parser_warnings.append("prescription_document_parser_applied")
+            parser_warnings.extend(
+                str(warning)
+                for warning in parsed_document.get("warnings", [])
+                if warning
+            )
+            parsed_prescription_text = str(
+                parsed_document.get("prescription_text") or ""
+            ).strip()
+            if not parsed_prescription_text:
+                return self._base_response(
+                    status="failed",
+                    warnings=parser_warnings,
+                )
+            prescription_text = parsed_prescription_text
+            parsed_context = parsed_document.get("patient_context")
+            context = self._merge_patient_context(
+                parsed_context if isinstance(parsed_context, dict) else {},
+                context,
+            )
+
         try:
             prescription_check = self.prescription_check_service.check_text(
                 prescription_text=prescription_text,
@@ -123,6 +183,7 @@ class PrescriptionAuditService:
         except Exception:
             return self._base_response(
                 status="failed",
+                warnings=parser_warnings,
                 errors=["prescription_check_failed"],
             )
 
@@ -130,6 +191,7 @@ class PrescriptionAuditService:
             return self._base_response(
                 status="failed",
                 prescription_check=None,
+                warnings=parser_warnings,
                 errors=["invalid_prescription_check_result"],
             )
 
@@ -139,11 +201,13 @@ class PrescriptionAuditService:
             return self._base_response(
                 status="failed",
                 prescription_check=prescription_check,
+                warnings=parser_warnings,
             )
         if not isinstance(normalized_result, dict):
             return self._base_response(
                 status="failed",
                 prescription_check=prescription_check,
+                warnings=parser_warnings,
                 errors=["normalized_result_missing"],
             )
 
@@ -190,11 +254,13 @@ class PrescriptionAuditService:
                 risk_analysis=risk_analysis,
                 patient_context=context,
             )
+            report = self.doctor_report_composer_service.compose(report)
         except Exception:
             return self._base_response(
                 status="failed",
                 prescription_check=prescription_check,
                 risk_analysis=risk_analysis,
+                warnings=parser_warnings,
                 errors=["report_generation_failed"],
             )
 
@@ -203,6 +269,7 @@ class PrescriptionAuditService:
             prescription_check=prescription_check,
             risk_analysis=risk_analysis,
             report=report,
+            warnings=parser_warnings,
         )
 
     def get_stats(self) -> dict[str, Any]:
@@ -221,10 +288,16 @@ class PrescriptionAuditService:
             if hasattr(self.safety_layer_service, "get_stats")
             else None
         )
+        composer_stats = (
+            self.doctor_report_composer_service.get_stats()
+            if hasattr(self.doctor_report_composer_service, "get_stats")
+            else None
+        )
         return {
             "service": "PrescriptionAuditService",
             "prescription_check_service": checker_stats,
             "report_generator_service": reporter_stats,
+            "doctor_report_composer_service": composer_stats,
             "safety_layer_service": safety_stats,
             "gemini_supported": self.gemini_client_factory is not None,
         }

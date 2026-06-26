@@ -1,7 +1,7 @@
 import type { RiskLevel } from '../types/chat'
 
 type RiskBadgeProps = {
-  level: RiskLevel
+  level?: RiskLevel | string | null
 }
 
 const badgeStyles: Record<RiskLevel, string> = {
@@ -10,13 +10,29 @@ const badgeStyles: Record<RiskLevel, string> = {
   low: 'border-green-200 bg-green-50 text-green-700',
   unknown: 'border-gray-200 bg-gray-50 text-gray-700',
 }
+const badgeLabels: Record<RiskLevel, string> = {
+  high: 'Cao',
+  moderate: 'Trung bình',
+  low: 'Thấp',
+  unknown: 'Cần bổ sung thông tin',
+}
+
+const normalizeRiskLevel = (level?: RiskLevel | string | null): RiskLevel => {
+  if (level === 'high' || level === 'moderate' || level === 'low') {
+    return level
+  }
+
+  return 'unknown'
+}
 
 export default function RiskBadge({ level }: RiskBadgeProps) {
+  const normalizedLevel = normalizeRiskLevel(level)
+
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyles[level]}`}
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyles[normalizedLevel]}`}
     >
-      {level}
+      {badgeLabels[normalizedLevel]}
     </span>
   )
 }

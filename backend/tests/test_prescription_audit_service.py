@@ -100,6 +100,18 @@ class FakeReportGeneratorService:
         return {"service": "FakeReportGeneratorService"}
 
 
+class FakeDoctorReportComposerService:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def compose(self, report: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append(report)
+        return report | {"doctor_facing_response": "Kết quả kiểm tra đơn thuốc"}
+
+    def get_stats(self) -> dict[str, Any]:
+        return {"service": "FakeDoctorReportComposerService"}
+
+
 class FakeSafetyLayerService:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
@@ -127,6 +139,44 @@ class FakeGeminiFactory:
         return object()
 
 
+STRUCTURED_DOCUMENT = """ĐƠN NGOẠI TRÚ 1
+Bệnh viện: Bệnh viện A
+Khoa: Tiêu hóa
+Đơn thuốc
+
+I.THÔNG TIN BỆNH NHÂN
+Họ và tên: Hoàng Thị P.
+Tuổi: 28
+Nam/Nữ: Nữ
+Cân nặng: 60kg
+Địa chỉ: Nga Sơn, Thanh Hóa
+
+II.THÔNG TIN LÂM SÀNG
+Chẩn đoán: Viêm phế quản/loét dạ dày tá tràng
+Dị ứng thuốc: Chưa ghi nhận
+Bệnh nền: Không ghi nhận
+Chức năng gan: Chưa có thông tin
+Chức năng thận: Bình thường
+Thai kỳ/ cho con bú: Chưa có thông tin
+Thuốc khác đang dùng: Chưa có thông tin
+
+III.CHỈ ĐỊNH DÙNG THUỐC
+1. Omeprazole (Losec) 20mg x 15 viên
+   Ngày uống 1 lần, mỗi lần 1 viên
+2. Sucralfate (Sucrate Gel) 1g/5mL x 15 gói
+   Ngày uống 3 lần, mỗi lần 1 gói
+
+Ngày, tháng, năm
+Bác sĩ khám bệnh
+"""
+
+
+STRUCTURED_MEDICATION_TEXT = """1. Omeprazole (Losec) 20mg x 15 viên
+   Ngày uống 1 lần, mỗi lần 1 viên
+2. Sucralfate (Sucrate Gel) 1g/5mL x 15 gói
+   Ngày uống 3 lần, mỗi lần 1 gói"""
+
+
 def test_use_gemini_false_context_ready_returns_partial_success() -> None:
     checker = FakePrescriptionCheckService()
     analyzer = FakeRiskAnalyzer(_risk_analysis("analysis_context_ready"))
@@ -136,6 +186,7 @@ def test_use_gemini_false_context_ready_returns_partial_success() -> None:
     service = PrescriptionAuditService(
         prescription_check_service=checker,
         report_generator_service=reporter,
+        doctor_report_composer_service=FakeDoctorReportComposerService(),
         safety_layer_service=safety,
         risk_analyzer_service_factory=analyzer_factory,
     )
@@ -151,6 +202,9 @@ def test_use_gemini_false_context_ready_returns_partial_success() -> None:
     assert safety.calls[0]["risk_analysis"]["status"] == "analysis_context_ready"
     assert reporter.calls[0]["risk_analysis"]["safety_marker"] is True
     assert reporter.calls[0]["normalized_result"] == checker.result["normalized_result"]
+    assert result["report"]["doctor_facing_response"].startswith(
+        "Kết quả kiểm tra đơn thuốc"
+    )
 
 
 def test_use_gemini_true_uses_gemini_factory_and_success() -> None:
@@ -161,6 +215,7 @@ def test_use_gemini_true_uses_gemini_factory_and_success() -> None:
     service = PrescriptionAuditService(
         prescription_check_service=FakePrescriptionCheckService(),
         report_generator_service=reporter,
+        doctor_report_composer_service=FakeDoctorReportComposerService(),
         safety_layer_service=FakeSafetyLayerService(),
         risk_analyzer_service_factory=analyzer_factory,
         gemini_client_factory=gemini_factory,
@@ -315,9 +370,11 @@ def test_report_exception_returns_failed() -> None:
 
 
 def test_get_stats_returns_metadata() -> None:
+    composer = FakeDoctorReportComposerService()
     service = PrescriptionAuditService(
         prescription_check_service=FakePrescriptionCheckService(),
         report_generator_service=FakeReportGeneratorService(),
+        doctor_report_composer_service=composer,
         safety_layer_service=FakeSafetyLayerService(),
         risk_analyzer_service_factory=FakeRiskAnalyzerFactory(FakeRiskAnalyzer()),
     )
@@ -331,6 +388,139 @@ def test_get_stats_returns_metadata() -> None:
     assert stats["report_generator_service"] == {
         "service": "FakeReportGeneratorService"
     }
+    assert stats["doctor_report_composer_service"] == {
+        "service": "FakeDoctorReportComposerService"
+    }
     assert stats["safety_layer_service"] == {
         "service": "FakeSafetyLayerService"
     }
+
+
+def test_audit_service_calls_doctor_report_composer_after_report_generation() -> None:
+    reporter = FakeReportGeneratorService(_report("report_ready"))
+    composer = FakeDoctorReportComposerService()
+    service = PrescriptionAuditService(
+        prescription_check_service=FakePrescriptionCheckService(),
+        report_generator_service=reporter,
+        doctor_report_composer_service=composer,
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(
+            FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
+        ),
+    )
+
+    result = service.audit_text("1. Omeprazol 20mg")
+
+    assert composer.calls == [reporter.result]
+    assert result["report"]["doctor_facing_response"] == "Kết quả kiểm tra đơn thuốc"
+
+
+def test_structured_document_parser_sends_only_medications_to_checker() -> None:
+    checker = FakePrescriptionCheckService()
+    service = PrescriptionAuditService(
+        prescription_check_service=checker,
+        report_generator_service=FakeReportGeneratorService(),
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(FakeRiskAnalyzer()),
+    )
+
+    result = service.audit_text(
+        STRUCTURED_DOCUMENT,
+        patient_context={
+            "age": None,
+            "sex": "unknown",
+            "renal_function": "not provided",
+            "diagnoses": [],
+            "allergies": "",
+            "current_medications": "not provided",
+        },
+    )
+
+    assert checker.calls[0]["prescription_text"] == STRUCTURED_MEDICATION_TEXT
+    assert checker.calls[0]["patient_context"]["age"] == 28
+    assert checker.calls[0]["patient_context"]["sex"] == "female"
+    assert checker.calls[0]["patient_context"]["renal_function"] == "Bình thường"
+    assert checker.calls[0]["patient_context"]["diagnoses"] == [
+        "Viêm phế quản",
+        "loét dạ dày tá tràng",
+    ]
+    assert checker.calls[0]["patient_context"]["allergies"] == "Chưa ghi nhận"
+    assert "prescription_document_parser_applied" in result["warnings"]
+
+
+def test_structured_document_meaningful_incoming_context_overrides_parsed() -> None:
+    checker = FakePrescriptionCheckService()
+    service = PrescriptionAuditService(
+        prescription_check_service=checker,
+        report_generator_service=FakeReportGeneratorService(),
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(FakeRiskAnalyzer()),
+    )
+
+    service.audit_text(
+        STRUCTURED_DOCUMENT,
+        patient_context={
+            "age": 99,
+            "sex": "male",
+            "renal_function": "eGFR 25 ml/min/1.73m2",
+            "allergies": "Không rõ",
+            "extra_context": {"source": "manual"},
+        },
+    )
+
+    context = checker.calls[0]["patient_context"]
+    assert context["age"] == 99
+    assert context["sex"] == "male"
+    assert context["renal_function"] == "eGFR 25 ml/min/1.73m2"
+    assert context["allergies"] == "Không rõ"
+    assert context["patient_name"] == "Hoàng Thị P."
+    assert context["extra_context"] == {"source": "manual"}
+
+
+def test_structured_document_without_medications_returns_early() -> None:
+    checker = FakePrescriptionCheckService()
+    analyzer = FakeRiskAnalyzer()
+    reporter = FakeReportGeneratorService()
+    safety = FakeSafetyLayerService()
+    service = PrescriptionAuditService(
+        prescription_check_service=checker,
+        report_generator_service=reporter,
+        safety_layer_service=safety,
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(analyzer),
+    )
+
+    result = service.audit_text(
+        """I. THÔNG TIN BỆNH NHÂN
+Họ tên: Nguyễn Văn A
+III. CHỈ ĐỊNH DÙNG THUỐC
+Ngày, tháng, năm
+Bác sĩ khám bệnh
+"""
+    )
+
+    assert result["status"] == "failed"
+    assert result["warnings"] == [
+        "prescription_document_parser_applied",
+        "prescription_document_parser_no_medication_lines",
+    ]
+    assert checker.calls == []
+    assert analyzer.calls == []
+    assert reporter.calls == []
+    assert safety.calls == []
+
+
+def test_non_structured_text_remains_unchanged() -> None:
+    checker = FakePrescriptionCheckService()
+    service = PrescriptionAuditService(
+        prescription_check_service=checker,
+        report_generator_service=FakeReportGeneratorService(),
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(FakeRiskAnalyzer()),
+    )
+    text = "Aspirin có tương tác Warfarin không?"
+
+    result = service.audit_text(text, patient_context={"sex": "unknown"})
+
+    assert checker.calls[0]["prescription_text"] == text
+    assert checker.calls[0]["patient_context"] == {"sex": "unknown"}
+    assert "prescription_document_parser_applied" not in result["warnings"]

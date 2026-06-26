@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -11,6 +12,7 @@ from backend.app.services.prescription_audit_service import PrescriptionAuditSer
 router = APIRouter(prefix="/prescriptions", tags=["prescriptions"])
 
 
+@lru_cache
 def get_prescription_audit_service() -> PrescriptionAuditService:
     return PrescriptionAuditService()
 

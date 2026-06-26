@@ -165,6 +165,100 @@ def test_extract_medication_lines_skips_clear_headers_only() -> None:
     ]
 
 
+def test_check_text_groups_instruction_lines_with_previous_medication() -> None:
+    normalizer = FakeNormalizer(
+        result={
+            "medications": [
+                {
+                    "raw_name": "Omeprazole",
+                    "raw_line": "1. Omeprazole (Losec) 20mg x 15 viên",
+                    "instruction": "Ngày uống 1 lần, mỗi lần 1 viên",
+                    "mapping_status": "ingredient_only",
+                    "active_ingredients": [
+                        {"name": "omeprazole", "evidence_slug": "omeprazole"}
+                    ],
+                    "requires_review": False,
+                    "warnings": [],
+                },
+                {
+                    "raw_name": "Sucralfate",
+                    "raw_line": "2. Sucralfate (Sucrate Gel) 1g/5mL x 15 gói",
+                    "instruction": "Ngày uống 3 lần, mỗi lần 1 gói",
+                    "mapping_status": "ingredient_only",
+                    "active_ingredients": [
+                        {"name": "sucralfate", "evidence_slug": "sucralfate"}
+                    ],
+                    "requires_review": False,
+                    "warnings": [],
+                },
+                {
+                    "raw_name": "Levofloxacine",
+                    "raw_line": "3. Levofloxacine 500mg x 7 viên",
+                    "instruction": "Ngày uống 1 viên",
+                    "mapping_status": "ingredient_only",
+                    "active_ingredients": [
+                        {"name": "levofloxacin", "evidence_slug": "levofloxacin"}
+                    ],
+                    "requires_review": False,
+                    "warnings": [],
+                },
+            ],
+            "summary": {"requires_review": False},
+            "unique_evidence_slugs": ["omeprazole", "sucralfate", "levofloxacin"],
+            "requires_review": False,
+            "warnings": [],
+        }
+    )
+    service = _service(normalizer=normalizer)
+
+    result = service.check_text(
+        """1. Omeprazole (Losec) 20mg x 15 viên
+   Ngày uống 1 lần, mỗi lần 1 viên
+2. Sucralfate (Sucrate Gel) 1g/5mL x 15 gói
+   Ngày uống 3 lần, mỗi lần 1 gói
+3. Levofloxacine 500mg x 7 viên
+   Ngày uống 1 viên"""
+    )
+
+    assert result["input"]["line_count"] == 3
+    assert normalizer.calls[0]["medications"] == [
+        {
+            "raw_line": "1. Omeprazole (Losec) 20mg x 15 viên",
+            "instruction": "Ngày uống 1 lần, mỗi lần 1 viên",
+        },
+        {
+            "raw_line": "2. Sucralfate (Sucrate Gel) 1g/5mL x 15 gói",
+            "instruction": "Ngày uống 3 lần, mỗi lần 1 gói",
+        },
+        {
+            "raw_line": "3. Levofloxacine 500mg x 7 viên",
+            "instruction": "Ngày uống 1 viên",
+        },
+    ]
+    assert all(
+        not medication["raw_line"].startswith("Ngày uống")
+        for medication in normalizer.calls[0]["medications"]
+    )
+
+
+def test_group_medication_blocks_does_not_attach_footer_to_instruction() -> None:
+    blocks = PrescriptionCheckService.group_medication_blocks(
+        [
+            "1. Levofloxacine 500mg x 7 viên",
+            "Ngày uống 1 viên",
+            "Ngày , tháng, năm",
+            "Bác sĩ khám bệnh",
+        ]
+    )
+
+    assert blocks == [
+        {
+            "raw_line": "1. Levofloxacine 500mg x 7 viên",
+            "instruction": "Ngày uống 1 viên",
+        }
+    ]
+
+
 def test_check_lines_strips_empty_lines_and_does_not_filter_headers() -> None:
     normalizer = FakeNormalizer()
     service = _service(normalizer=normalizer)

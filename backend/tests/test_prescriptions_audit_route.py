@@ -33,6 +33,17 @@ def _clear_overrides() -> None:
     app.dependency_overrides.pop(get_prescription_audit_service, None)
 
 
+def test_prescription_audit_service_dependency_is_cached() -> None:
+    get_prescription_audit_service.cache_clear()
+    try:
+        first = get_prescription_audit_service()
+        second = get_prescription_audit_service()
+    finally:
+        get_prescription_audit_service.cache_clear()
+
+    assert first is second
+
+
 def test_prescription_audit_route_returns_fake_service_response() -> None:
     fake_service = FakePrescriptionAuditService()
     _override_service(fake_service)

@@ -5,11 +5,19 @@ type ChatInputProps = {
   value: string
   onChange: (value: string) => void
   onSend: () => void
+  disabled?: boolean
+  focusSignal?: number
 }
 
-export default function ChatInput({ value, onChange, onSend }: ChatInputProps) {
+export default function ChatInput({
+  value,
+  onChange,
+  onSend,
+  disabled = false,
+  focusSignal = 0,
+}: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const canSend = value.trim().length > 0
+  const canSend = value.trim().length > 0 && !disabled
 
   useEffect(() => {
     const textarea = textareaRef.current
@@ -22,6 +30,12 @@ export default function ChatInput({ value, onChange, onSend }: ChatInputProps) {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`
     textarea.style.overflowY = textarea.scrollHeight > 180 ? 'auto' : 'hidden'
   }, [value])
+
+  useEffect(() => {
+    if (focusSignal > 0) {
+      textareaRef.current?.focus()
+    }
+  }, [focusSignal])
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || event.shiftKey) {

@@ -247,6 +247,15 @@ def test_medication_summary_and_medications_requiring_review() -> None:
     ]
 
 
+def test_medication_summary_preserves_instruction() -> None:
+    normalized = _normalized_result()
+    normalized["medications"][0]["instruction"] = "Ngày uống 1 lần, mỗi lần 1 viên"
+
+    medication_summary = ReportGeneratorService().build_medication_summary(normalized)
+
+    assert medication_summary[0]["instruction"] == "Ngày uống 1 lần, mỗi lần 1 viên"
+
+
 def test_missing_information_is_preserved() -> None:
     report = ReportGeneratorService().generate_report(
         _normalized_result(),
@@ -286,6 +295,39 @@ def test_markdown_contains_expected_sections_url_and_disclaimer() -> None:
     assert "## Cảnh báo cần xem xét" in markdown
     assert "https://example.test/omeprazole" in markdown
     assert "không thay thế quyết định chuyên môn" in markdown
+
+
+def test_report_uses_doctor_facing_warning_and_avoids_decisive_wording() -> None:
+    risk_item = _risk_item()
+    risk_item["recommendation"] = "Cần ngừng thuốc và đổi thuốc."
+    report = ReportGeneratorService().generate_report(
+        _normalized_result(),
+        _evidence_bundle(),
+        {
+            "status": "analysis_ready",
+            "overall_risk_level": "moderate",
+            "risk_items": [risk_item],
+            "missing_information": [],
+            "warnings": ["drug_mapping_not_found"],
+            "errors": [],
+        },
+    )
+    joined = str(report).casefold()
+
+    assert report["doctor_facing_warnings"] == [
+        "Một số dòng thuốc chưa được hệ thống nhận diện chắc chắn, cần rà soát lại."
+    ]
+    for phrase in [
+        "đơn thuốc an toàn",
+        "đơn thuốc không an toàn",
+        "dùng được",
+        "không dùng được",
+        "ngừng thuốc",
+        "đổi thuốc",
+        "tăng liều",
+        "giảm liều",
+    ]:
+        assert phrase not in joined
 
 
 def test_evidence_snippet_length_limit() -> None:

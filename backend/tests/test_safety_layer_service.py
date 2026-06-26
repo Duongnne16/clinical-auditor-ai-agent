@@ -374,6 +374,114 @@ def test_mapping_requires_review_adds_warning() -> None:
     assert "safety_mapping_requires_review" in result["warnings"]
 
 
+def test_unknown_pregnancy_lactation_requires_confirmation_for_relevant_patient() -> None:
+    result = SafetyLayerService().apply(
+        _risk_analysis(
+            [
+                _risk_item(
+                    risk_type="pregnancy_lactation",
+                    severity="high",
+                    title="Chống chỉ định Levofloxacin cho phụ nữ mang thai",
+                    explanation="Bệnh nhân là nữ và tình trạng thai kỳ chưa được ghi nhận.",
+                    recommendation="Cần ngừng thuốc.",
+                )
+            ],
+            level="high",
+        ),
+        normalized_result={},
+        evidence_bundle=_bundle("chunk-1"),
+        patient_context={
+            "sex": "female",
+            "pregnancy_lactation": "Chưa có thông tin",
+        },
+    )
+
+    item = result["risk_items"][0]
+    assert item["severity"] == "unknown"
+    assert item["title"] == "Cần xác nhận tình trạng thai kỳ/cho con bú"
+    assert "Cần xác nhận" in item["explanation"]
+    assert "pregnancy_lactation" in result["missing_information"]
+    assert "safety_pregnancy_lactation_requires_confirmation" in result["warnings"]
+
+
+def test_pregnancy_lactation_missing_not_added_for_male_or_not_applicable() -> None:
+    item = _risk_item(
+        risk_type="pregnancy_lactation",
+        title="Pregnancy risk",
+        explanation="Evidence mentions pregnancy.",
+    )
+
+    male_result = SafetyLayerService().apply(
+        _risk_analysis([item], level="high"),
+        normalized_result={},
+        evidence_bundle=_bundle("chunk-1"),
+        patient_context={"sex": "male", "pregnancy_lactation": "Chưa có thông tin"},
+    )
+    not_applicable_result = SafetyLayerService().apply(
+        _risk_analysis([item], level="high"),
+        normalized_result={},
+        evidence_bundle=_bundle("chunk-1"),
+        patient_context={"sex": "female", "pregnancy_status": "not_applicable"},
+    )
+
+    assert "pregnancy_lactation" not in male_result["missing_information"]
+    assert "pregnancy_status" not in not_applicable_result["missing_information"]
+
+
+def test_negative_pregnancy_lactation_removes_confirmation_items_and_missing_info() -> None:
+    risk_analysis = _risk_analysis(
+        [
+            _risk_item(
+                risk_type="pregnancy_lactation",
+                severity="high",
+                title="Cần xác nhận tình trạng thai kỳ/cho con bú",
+                explanation="Bệnh nhân chưa có thông tin thai kỳ/cho con bú.",
+                recommendation="Cần xác nhận trước khi đánh giá đầy đủ.",
+            )
+        ],
+        level="high",
+    )
+    risk_analysis["missing_information"] = [
+        "pregnancy_status",
+        "pregnancy_lactation",
+        "hepatic_function",
+    ]
+
+    result = SafetyLayerService().apply(
+        risk_analysis,
+        normalized_result={},
+        evidence_bundle=_bundle("chunk-1"),
+        patient_context={"sex": "female", "pregnancy_lactation": "Không"},
+    )
+
+    assert result["risk_items"] == []
+    assert "pregnancy_status" not in result["missing_information"]
+    assert "pregnancy_lactation" not in result["missing_information"]
+    assert result["missing_information"] == ["hepatic_function"]
+    assert "safety_removed_pregnancy_lactation_when_not_applicable" in result["warnings"]
+
+
+def test_negative_pregnancy_status_aliases_are_not_treated_as_unknown() -> None:
+    for pregnancy_status in ("khong", "not pregnant", "not breastfeeding", "none", "no"):
+        result = SafetyLayerService().apply(
+            _risk_analysis(
+                [
+                    _risk_item(
+                        risk_type="pregnancy_lactation",
+                        title="Pregnancy confirmation",
+                        explanation="Evidence mentions pregnancy.",
+                    )
+                ]
+            ),
+            normalized_result={},
+            evidence_bundle=_bundle("chunk-1"),
+            patient_context={"sex": "female", "pregnancy_status": pregnancy_status},
+        )
+
+        assert result["risk_items"] == []
+        assert "pregnancy_status" not in result["missing_information"]
+
+
 def test_warnings_deduplicated() -> None:
     risk_analysis = _risk_analysis([_risk_item(evidence_refs=[])])
     risk_analysis["warnings"] = [

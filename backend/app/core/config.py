@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     gemini_enabled: bool = False
     gemini_temperature: float = 0.0
     gemini_timeout_seconds: int = 60
+    gemini_report_enable: bool = False
+    gemini_report_model: str = ""
+    gemini_report_timeout_seconds: int | None = None
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""

@@ -97,6 +97,40 @@ MILD_RENAL_INFERENCE_TERMS = [
     "suy thận nhẹ",
     "mild renal impairment",
 ]
+PREGNANCY_LACTATION_TERMS = [
+    "mang thai",
+    "thai ky",
+    "thai kỳ",
+    "cho con bu",
+    "cho con bú",
+    "pregnancy",
+    "pregnant",
+    "lactation",
+    "breastfeeding",
+]
+UNKNOWN_PREGNANCY_VALUES = {
+    "",
+    "unknown",
+    "not provided",
+    "chua co thong tin",
+    "chưa có thông tin",
+}
+NEGATIVE_PREGNANCY_VALUES = {
+    "khong",
+    "không",
+    "khong mang thai",
+    "không mang thai",
+    "khong cho con bu",
+    "không cho con bú",
+    "not pregnant",
+    "not breastfeeding",
+    "none",
+    "no",
+}
+PREGNANCY_CONFIRMATION_TEXT = (
+    "Cần xác nhận tình trạng thai kỳ/cho con bú trước khi đánh giá đầy đủ "
+    "nguy cơ liên quan đến thuốc này."
+)
 
 
 def _deduplicate(values: Iterable[str]) -> list[str]:
@@ -120,7 +154,9 @@ def _text(value: Any) -> str:
 
 def _fold_text(value: Any) -> str:
     normalized = unicodedata.normalize("NFKD", _text(value).casefold())
-    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return "".join(
+        ch for ch in normalized if not unicodedata.combining(ch)
+    ).replace("đ", "d")
 
 
 def _contains_any(text: Any, phrases: Iterable[str]) -> bool:
@@ -322,6 +358,96 @@ class SafetyLayerService:
             item[field] = replacement
 
     @staticmethod
+    def _pregnancy_lactation_relevant(
+        patient_context: dict[str, Any] | None,
+    ) -> bool:
+        if not isinstance(patient_context, dict):
+            return True
+        sex = _fold_text(patient_context.get("sex"))
+        pregnancy_status = _fold_text(patient_context.get("pregnancy_status"))
+        if sex == "male" or pregnancy_status == "not_applicable":
+            return False
+        return True
+
+    @classmethod
+    def _pregnancy_lactation_negative(
+        cls, patient_context: dict[str, Any] | None
+    ) -> bool:
+        if not isinstance(patient_context, dict):
+            return False
+        values = [
+            _fold_text(patient_context.get("pregnancy_lactation")),
+            _fold_text(patient_context.get("pregnancy_status")),
+        ]
+        return any(value in NEGATIVE_PREGNANCY_VALUES for value in values)
+
+    @classmethod
+    def _pregnancy_lactation_unknown(
+        cls, patient_context: dict[str, Any] | None
+    ) -> bool:
+        if cls._pregnancy_lactation_negative(patient_context):
+            return False
+        if not cls._pregnancy_lactation_relevant(patient_context):
+            return False
+        if not isinstance(patient_context, dict):
+            return True
+        values = [
+            _fold_text(patient_context.get("pregnancy_lactation")),
+            _fold_text(patient_context.get("pregnancy_status")),
+        ]
+        return any(value in UNKNOWN_PREGNANCY_VALUES for value in values)
+
+    @classmethod
+    def _handle_unknown_pregnancy_lactation(
+        cls,
+        item: dict[str, Any],
+        patient_context: dict[str, Any] | None,
+        missing_information: list[str],
+        warnings: list[str],
+    ) -> None:
+        risk_type = str(item.get("risk_type") or "")
+        if risk_type != "pregnancy_lactation" and not _contains_any(
+            cls._risk_text(item), PREGNANCY_LACTATION_TERMS
+        ):
+            return
+        if not cls._pregnancy_lactation_unknown(patient_context):
+            return
+
+        item["severity"] = "unknown"
+        item["title"] = "Cần xác nhận tình trạng thai kỳ/cho con bú"
+        item["explanation"] = PREGNANCY_CONFIRMATION_TEXT
+        item["recommendation"] = (
+            "Bác sĩ/dược sĩ cần bổ sung thông tin thai kỳ/cho con bú và đối "
+            "chiếu với bằng chứng trước khi đưa ra đánh giá lâm sàng."
+        )
+        missing_field = (
+            "pregnancy_lactation"
+            if isinstance(patient_context, dict)
+            and "pregnancy_lactation" in patient_context
+            else "pregnancy_status"
+        )
+        missing_information.append(missing_field)
+        warnings.append("safety_pregnancy_lactation_requires_confirmation")
+
+    @classmethod
+    def _is_pregnancy_lactation_item(cls, item: dict[str, Any]) -> bool:
+        risk_type = str(item.get("risk_type") or "")
+        return risk_type == "pregnancy_lactation" or _contains_any(
+            cls._risk_text(item), PREGNANCY_LACTATION_TERMS
+        )
+
+    @staticmethod
+    def _remove_pregnancy_missing_information(
+        missing_information: list[str],
+    ) -> list[str]:
+        return [
+            item
+            for item in missing_information
+            if not _contains_any(item, PREGNANCY_LACTATION_TERMS)
+            and _fold_text(item) not in {"pregnancy_status", "pregnancy_lactation"}
+        ]
+
+    @staticmethod
     def _normalized_has_unresolved(normalized_result: dict[str, Any]) -> bool:
         for key in ("unresolved_ingredients", "unmapped_medications"):
             value = normalized_result.get(key)
@@ -404,7 +530,20 @@ class SafetyLayerService:
             return result
 
         kept_items: list[dict[str, Any]] = []
+        missing_information = [
+            str(item) for item in _as_list(result.get("missing_information")) if item
+        ]
+        pregnancy_lactation_negative = self._pregnancy_lactation_negative(
+            patient_context
+        )
+        if pregnancy_lactation_negative:
+            missing_information = self._remove_pregnancy_missing_information(
+                missing_information
+            )
         for item in _risk_items(result.get("risk_items")):
+            if pregnancy_lactation_negative and self._is_pregnancy_lactation_item(item):
+                warnings.append("safety_removed_pregnancy_lactation_when_not_applicable")
+                continue
             refs = [str(ref) for ref in _as_list(item.get("evidence_refs")) if ref]
             filtered_refs = _deduplicate([ref for ref in refs if ref in valid_refs])
             if not filtered_refs:
@@ -415,6 +554,9 @@ class SafetyLayerService:
             item = self._handle_unsupported_diagnosis(item, patient_context, warnings)
             if item is None:
                 continue
+            self._handle_unknown_pregnancy_lactation(
+                item, patient_context, missing_information, warnings
+            )
             kept_items.append(item)
 
         result["risk_items"] = kept_items
@@ -422,9 +564,7 @@ class SafetyLayerService:
         result["overall_risk_level"] = recomputed
         if recomputed != original_level:
             warnings.append("safety_overall_risk_recomputed")
-        result["missing_information"] = [
-            str(item) for item in _as_list(result.get("missing_information")) if item
-        ]
+        result["missing_information"] = _deduplicate(missing_information)
         result["warnings"] = _deduplicate(warnings)
         result["errors"] = errors
         return result

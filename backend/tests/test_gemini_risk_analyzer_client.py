@@ -107,6 +107,7 @@ def test_build_prompt_contains_required_safety_and_json_instructions() -> None:
     assert "tự giảm liều" in prompt
     assert "tự thay thuốc" in prompt
     assert "Nếu không có evidence trực tiếp" in prompt
+    assert "cần xác nhận tình trạng thai kỳ/cho con bú" in prompt
 
 
 def test_parse_response_accepts_dict() -> None:

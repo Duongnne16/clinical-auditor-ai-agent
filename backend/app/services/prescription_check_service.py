@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from typing import Any, Iterable
 
 from backend.app.services.normalize_drugs_service import NormalizeDrugsService
@@ -16,6 +18,27 @@ CLEAR_HEADER_PREFIXES = (
     "lời dặn:",
     "loi dan:",
 )
+NUMBERED_MEDICATION_RE = re.compile(r"^\s*\d+\s*(?:[.)-])\s+\S+")
+
+
+def _fold_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFD", str(value or "").casefold())
+    without_marks = "".join(
+        char for char in normalized if unicodedata.category(char) != "Mn"
+    )
+    return without_marks.replace("đ", "d")
+
+
+def _is_footer_or_signature_line(line: str) -> bool:
+    folded = _fold_text(line).strip(" .")
+    if not folded:
+        return False
+    compact = re.sub(r"[^a-z0-9]+", " ", folded).strip()
+    if re.fullmatch(r"ngay(?: \d+)? thang(?: \d+)? nam(?: \d+)?", compact):
+        return True
+    if compact.startswith("bac si"):
+        return True
+    return compact in {"ky ten", "chu ky"}
 
 
 def _deduplicate(values: Iterable[str]) -> list[str]:
@@ -91,8 +114,28 @@ class PrescriptionCheckService:
                 continue
             if self._is_clear_header(line):
                 continue
+            if _is_footer_or_signature_line(line):
+                continue
             medication_lines.append(line)
         return medication_lines
+
+    @staticmethod
+    def group_medication_blocks(medication_lines: list[str]) -> list[dict[str, Any]]:
+        blocks: list[dict[str, Any]] = []
+        for line in medication_lines:
+            if _is_footer_or_signature_line(line):
+                continue
+            if NUMBERED_MEDICATION_RE.match(line):
+                blocks.append({"raw_line": line})
+                continue
+            if not blocks:
+                blocks.append({"raw_line": line})
+                continue
+            instruction = str(blocks[-1].get("instruction") or "")
+            blocks[-1]["instruction"] = (
+                f"{instruction}\n{line}".strip() if instruction else line
+            )
+        return blocks
 
     @staticmethod
     def _clean_lines(medication_lines: list[str]) -> list[str]:
@@ -190,8 +233,9 @@ class PrescriptionCheckService:
             )
 
         medication_lines = self.extract_medication_lines(prescription_text)
+        medication_blocks = self.group_medication_blocks(medication_lines)
         return self._check_prepared_lines(
-            medication_lines=medication_lines,
+            medications=medication_blocks,
             raw_text=prescription_text,
             doctor_id=doctor_id,
             patient_context=patient_context,
@@ -210,7 +254,7 @@ class PrescriptionCheckService:
         if top_k_per_type <= 0:
             raise ValueError("top_k_per_type must be greater than 0")
         return self._check_prepared_lines(
-            medication_lines=self._clean_lines(medication_lines),
+            medications=self._clean_lines(medication_lines),
             raw_text=None,
             doctor_id=doctor_id,
             patient_context=patient_context,
@@ -221,13 +265,20 @@ class PrescriptionCheckService:
     def _check_prepared_lines(
         self,
         *,
-        medication_lines: list[str],
+        medications: list[dict[str, Any] | str],
         raw_text: str | None,
         doctor_id: str | None,
         patient_context: dict[str, Any] | None,
         query_types: list[str] | None,
         top_k_per_type: int,
     ) -> dict[str, Any]:
+        medication_lines = [
+            str(medication.get("raw_line") or "").strip()
+            if isinstance(medication, dict)
+            else str(medication).strip()
+            for medication in medications
+        ]
+        medication_lines = [line for line in medication_lines if line]
         if not medication_lines:
             return self._base_output(
                 status="invalid_input",
@@ -239,9 +290,22 @@ class PrescriptionCheckService:
             )
 
         try:
-            normalized_result = self.normalizer.normalize_many(
-                [{"raw_line": line} for line in medication_lines]
-            )
+            normalized_inputs = [
+                medication
+                for medication in medications
+                if (
+                    isinstance(medication, dict)
+                    and str(medication.get("raw_line") or "").strip()
+                )
+                or (isinstance(medication, str) and medication.strip())
+            ]
+            normalized_inputs = [
+                medication
+                if isinstance(medication, dict)
+                else {"raw_line": str(medication).strip()}
+                for medication in normalized_inputs
+            ]
+            normalized_result = self.normalizer.normalize_many(normalized_inputs)
         except Exception:
             return self._base_output(
                 status="error",
