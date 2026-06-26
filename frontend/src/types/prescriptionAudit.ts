@@ -1,10 +1,12 @@
 import type { RiskLevel } from './chat'
+import type { DoctorMemoryResponse } from './doctorNote'
 
 export type PatientContext = {
   age: number | null
   sex: string
   allergies: string
   pregnancy_status: string
+  pregnancy_lactation?: string
   renal_function: string
   hepatic_function: string
   diagnoses: string[]
@@ -49,6 +51,26 @@ export type MedicationSummary = {
   }> | null
 }
 
+export type NormalizedMedication = {
+  raw_name?: string | null
+  raw_line?: string | null
+  generic_text?: string | null
+  brand_text?: string | null
+  active_ingredients?: Array<{
+    name?: string | null
+    normalized_name?: string | null
+    evidence_slug?: string | null
+  }> | null
+}
+
+export type PrescriptionCheck = {
+  patient_context?: Partial<PatientContext> | null
+  normalized_result?: {
+    medications?: NormalizedMedication[] | null
+    unique_evidence_slugs?: string[] | null
+  } | null
+}
+
 export type RiskItem = {
   risk_type?: string | null
   severity?: RiskLevel | string | null
@@ -64,6 +86,7 @@ export type Report = {
   status?: string | null
   overall_risk_level?: RiskLevel | string | null
   summary?: string | null
+  patient_context?: Partial<PatientContext> | null
   medication_summary?: MedicationSummary[] | null
   medications_requiring_review?: MedicationSummary[] | null
   risk_items?: RiskItem[] | null
@@ -72,6 +95,7 @@ export type Report = {
   safety_disclaimer?: string | null
   doctor_facing_response?: string | null
   doctor_facing_warnings?: string[] | null
+  doctor_memory?: DoctorMemoryResponse | null
   warnings?: string[] | null
   errors?: string[] | null
 }
@@ -90,5 +114,7 @@ export type PrescriptionAuditResponse = {
   warnings?: string[] | null
   errors?: string[] | null
   risk_analysis?: RiskAnalysis | null
+  prescription_check?: PrescriptionCheck | null
   report?: Report | null
+  doctor_memory?: DoctorMemoryResponse | null
 }

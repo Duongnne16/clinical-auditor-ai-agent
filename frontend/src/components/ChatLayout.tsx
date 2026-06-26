@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { FileText, Plus } from 'lucide-react'
+import { FileText, PanelRightOpen, Plus } from 'lucide-react'
 import { auditPrescription } from '../api/prescriptionAuditApi'
 import ChatInput from './ChatInput'
 import ChatMessage from './ChatMessage'
+import DoctorMemoryPanel from './DoctorMemoryPanel'
 import type { ChatMessageItem } from '../types/chat'
+import type { DoctorMemoryNote } from '../types/doctorNote'
 import type {
   PatientContext,
   PrescriptionAuditRequest,
+  PrescriptionAuditResponse,
 } from '../types/prescriptionAudit'
 
 type DemoCase = {
@@ -75,6 +78,13 @@ export default function ChatLayout() {
   const [selectedDemoId, setSelectedDemoId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [inputFocusSignal, setInputFocusSignal] = useState(0)
+  const [latestAuditResult, setLatestAuditResult] =
+    useState<PrescriptionAuditResponse | null>(null)
+  const [relatedMemoryNotes, setRelatedMemoryNotes] = useState<
+    DoctorMemoryNote[]
+  >([])
+  const [isMemoryPanelOpen, setIsMemoryPanelOpen] = useState(true)
+  const [isMemoryDrawerOpen, setIsMemoryDrawerOpen] = useState(false)
   const messageEndRef = useRef<HTMLDivElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
@@ -175,6 +185,9 @@ export default function ChatLayout() {
 
     try {
       const auditResult = await auditPrescription(buildAuditRequest(trimmedInput))
+      setLatestAuditResult(auditResult)
+      setRelatedMemoryNotes(auditResult.doctor_memory?.matched_notes || [])
+      setIsMemoryPanelOpen(true)
 
       replaceAssistantMessage(loadingMessageId, {
         content: '',
@@ -198,6 +211,14 @@ export default function ChatLayout() {
     setMessages([])
     setInputValue('')
     setSelectedDemoId(null)
+    setLatestAuditResult(null)
+    setRelatedMemoryNotes([])
+    setIsMemoryPanelOpen(true)
+    setIsMemoryDrawerOpen(false)
+  }
+
+  const handleAddLocalMemoryNote = (note: DoctorMemoryNote) => {
+    setRelatedMemoryNotes((currentNotes) => [note, ...currentNotes])
   }
 
   return (
@@ -254,6 +275,19 @@ export default function ChatLayout() {
                 OCR/PDF upload coming later
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIsMemoryPanelOpen(true)
+                setIsMemoryDrawerOpen(true)
+              }}
+              className={`items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300 ${
+                isMemoryPanelOpen ? 'inline-flex xl:hidden' : 'inline-flex'
+              }`}
+            >
+              <PanelRightOpen size={15} />
+              Doctor Memory
+            </button>
           </div>
         </header>
 
@@ -306,6 +340,30 @@ export default function ChatLayout() {
           focusSignal={inputFocusSignal}
         />
       </main>
+
+      {isMemoryPanelOpen ? (
+        <div className="hidden w-[370px] shrink-0 border-l border-gray-200 xl:flex">
+          <DoctorMemoryPanel
+            latestAuditResult={latestAuditResult}
+            relatedNotes={relatedMemoryNotes}
+            onAddLocalNote={handleAddLocalMemoryNote}
+            onClose={() => setIsMemoryPanelOpen(false)}
+          />
+        </div>
+      ) : null}
+
+      {isMemoryDrawerOpen ? (
+        <div className="fixed inset-0 z-40 bg-black/20 xl:hidden">
+          <div className="absolute inset-y-0 right-0 w-[min(390px,92vw)] border-l border-gray-200 bg-white shadow-2xl">
+            <DoctorMemoryPanel
+              latestAuditResult={latestAuditResult}
+              relatedNotes={relatedMemoryNotes}
+              onAddLocalNote={handleAddLocalMemoryNote}
+              onClose={() => setIsMemoryDrawerOpen(false)}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

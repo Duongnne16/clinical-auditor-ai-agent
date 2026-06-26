@@ -82,18 +82,22 @@ export async function auditPrescription(
     return payload as PrescriptionAuditResponse
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('Yêu cầu kiểm tra đơn thuốc quá thời gian chờ 120 giây.')
+      throw new Error('Yêu cầu kiểm tra đơn thuốc quá thời gian chờ 120 giây.', {
+        cause: error,
+      })
     }
 
     if (error instanceof TypeError) {
-      throw new Error(BACKEND_OFF_MESSAGE)
+      throw new Error(BACKEND_OFF_MESSAGE, { cause: error })
     }
 
     if (error instanceof Error) {
       throw error
     }
 
-    throw new Error('Không thể kiểm tra đơn thuốc do lỗi không xác định.')
+    throw new Error('Không thể kiểm tra đơn thuốc do lỗi không xác định.', {
+      cause: error,
+    })
   } finally {
     window.clearTimeout(timeoutId)
   }
