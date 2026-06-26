@@ -13,9 +13,16 @@ QUANTITY_RE = re.compile(
     re.IGNORECASE,
 )
 PAREN_RE = re.compile(r"\(([^()]*)\)")
+UNIT_PATTERN = r"mui|iu|ui|mcg|µg|mg|g|ml|%"
+RATIO_STRENGTH_PATTERN = (
+    rf"\d+(?:[.,]\d+)?\s*(?:{UNIT_PATTERN})"
+    rf"\s*/\s*(?:\d+(?:[.,]\d+)?\s*)?(?:{UNIT_PATTERN})"
+)
 STRENGTH_START_RE = re.compile(
     r"(?P<strength>"
     r"\(\s*\d+(?:[.,]\d+)?[^)]*\)\s*(?:mg/g|g/ml|%|/[\d.,]*\s*ml)"
+    r"|"
+    rf"{RATIO_STRENGTH_PATTERN}"
     r"|"
     r"\d+(?:[.,]\d+)?\s*(?:mui|iu|ui|mcg|µg|mg|g|ml|%)"
     r"(?:\s*\+\s*\d+(?:[.,]\d+)?\s*(?:mui|iu|ui|mcg|µg|mg|g|ml|%))*"
@@ -25,7 +32,8 @@ STRENGTH_START_RE = re.compile(
 SIMPLE_STRENGTH_RE = re.compile(
     r"^\s*(?P<value>\d+(?:[.,]\d+)?)\s*"
     r"(?P<unit>mui|iu|ui|mcg|µg|mg|g|ml|%)"
-    r"(?P<denominator>/.*)?\s*$",
+    r"(?P<denominator>\s*/\s*(?:\d+(?:[.,]\d+)?\s*)?"
+    rf"(?:{UNIT_PATTERN}))?\s*$",
     re.IGNORECASE,
 )
 

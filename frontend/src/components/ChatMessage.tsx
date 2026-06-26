@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { ChatMessageItem } from '../types/chat'
+import type { AuditMessageItem } from '../types/auditConversation'
 import type {
   EvidenceItem,
   MedicationSummary,
@@ -9,7 +9,7 @@ import type {
 import RiskBadge from './RiskBadge'
 
 type ChatMessageProps = {
-  message: ChatMessageItem
+  message: AuditMessageItem
 }
 
 const INTERNAL_MAPPING_CODES = new Set([

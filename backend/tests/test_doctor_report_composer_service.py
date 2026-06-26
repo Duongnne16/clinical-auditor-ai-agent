@@ -320,6 +320,22 @@ def test_patient_context_known_negative_values_filter_missing_information() -> N
     assert "current_medications" not in text
 
 
+def test_patient_context_lactation_value_filters_pregnancy_missing_information() -> None:
+    report = _report()
+    report["patient_context"] = {"pregnancy_lactation": "Cho con bú"}
+    report["missing_information"] = [
+        "pregnancy_status",
+        "pregnancy_lactation",
+    ]
+
+    result = DoctorReportComposerService(enabled=False).compose(report)
+    text = result["doctor_facing_response"]
+
+    assert "Tình trạng thai kỳ/cho con bú chưa được ghi nhận" not in text
+    assert "pregnancy_status" not in text
+    assert "pregnancy_lactation" not in text
+
+
 def test_deterministic_fallback_hides_mapping_database_uncertainty_from_main_text() -> None:
     result = DoctorReportComposerService(enabled=False).compose(_report())
     text = result["doctor_facing_response"]

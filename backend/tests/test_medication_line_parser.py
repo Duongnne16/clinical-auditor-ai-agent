@@ -33,6 +33,58 @@ def test_parses_number_brand_strength_and_quantity(
     assert result["warnings"] == []
 
 
+def test_parses_sucralfate_ratio_strength_without_name_fragment(
+    parser: MedicationLineParser,
+) -> None:
+    result = parser.parse_line(
+        "2. Sucralfate (Sucrate Gel) 1g/5mL x 15 goi"
+    )
+
+    assert result["order_index"] == 2
+    assert result["generic_text"] == "Sucralfate"
+    assert result["brand_text"] == "Sucrate Gel"
+    assert result["strength_text"] == "1g/5mL"
+    assert result["ingredients"] == [
+        {
+            "name": "Sucralfate",
+            "strength_raw": "1g/5mL",
+            "strength_value": 1.0,
+            "strength_unit": "g",
+        }
+    ]
+    candidates = [
+        result["generic_text"],
+        *(ingredient["name"] for ingredient in result["ingredients"]),
+    ]
+    assert all("1g/" not in str(candidate) for candidate in candidates)
+    assert all(not str(candidate).strip().endswith("/") for candidate in candidates)
+
+
+@pytest.mark.parametrize(
+    "strength",
+    [
+        "1g/5mL",
+        "500mg/5ml",
+        "250 mg/5 mL",
+        "250 mg / 5 mL",
+        "500 mg / 5 ml",
+        "125mg/5ml",
+        "10mg/ml",
+        "5mg/1ml",
+    ],
+)
+def test_parses_ratio_strength_variants(
+    parser: MedicationLineParser, strength: str
+) -> None:
+    result = parser.parse_line(f"Drug {strength} x 1 chai")
+
+    assert result["generic_text"] == "Drug"
+    assert result["strength_text"] == strength
+    assert result["ingredients"][0]["name"] == "Drug"
+    assert result["ingredients"][0]["strength_raw"] == strength
+    assert result["warnings"] == []
+
+
 @pytest.mark.parametrize(
     ("prefix", "index"),
     [("2)", 2), ("3-", 3), ("4.", 4)],

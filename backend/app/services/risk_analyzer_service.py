@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import re
+import unicodedata
 from typing import Any, Iterable
 
 
@@ -28,6 +29,14 @@ PATIENT_CONTEXT_FIELDS = [
     "diagnoses",
     "current_medications",
 ]
+UNKNOWN_PATIENT_CONTEXT_VALUES = {
+    "",
+    "unknown",
+    "not provided",
+    "chua co thong tin",
+    "chua ghi nhan",
+    "khong ro",
+}
 
 
 def _deduplicate(values: Iterable[str]) -> list[str]:
@@ -39,6 +48,24 @@ def _deduplicate(values: Iterable[str]) -> list[str]:
         seen.add(value)
         output.append(value)
     return output
+
+
+def _fold_text(value: Any) -> str:
+    normalized = unicodedata.normalize("NFD", str(value or "").casefold())
+    without_marks = "".join(
+        char for char in normalized if unicodedata.category(char) != "Mn"
+    )
+    return re.sub(r"\s+", " ", without_marks).strip().replace("Ä‘", "d")
+
+
+def _has_meaningful_context_value(value: Any) -> bool:
+    if value in (None, [], {}):
+        return False
+    if isinstance(value, list):
+        return any(_has_meaningful_context_value(item) for item in value)
+    if isinstance(value, dict):
+        return any(_has_meaningful_context_value(item) for item in value.values())
+    return _fold_text(value) not in UNKNOWN_PATIENT_CONTEXT_VALUES
 
 
 def _clean_snippet(text: Any, max_length: int = 700) -> str:
@@ -68,11 +95,15 @@ class RiskAnalyzerService:
     @staticmethod
     def _missing_information(patient_context: dict[str, Any] | None) -> list[str]:
         context = patient_context or {}
-        return [
-            field
-            for field in PATIENT_CONTEXT_FIELDS
-            if context.get(field) in (None, "", [], {})
-        ]
+        missing: list[str] = []
+        for field in PATIENT_CONTEXT_FIELDS:
+            if field == "pregnancy_status" and _has_meaningful_context_value(
+                context.get("pregnancy_lactation")
+            ):
+                continue
+            if not _has_meaningful_context_value(context.get(field)):
+                missing.append(field)
+        return missing
 
     @staticmethod
     def _medication_context(

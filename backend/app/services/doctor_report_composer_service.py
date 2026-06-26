@@ -233,7 +233,10 @@ def _patient_context_suppresses_missing(
             patient_context.get("pregnancy_lactation"),
             patient_context.get("pregnancy_status"),
         ]
-        return any(_is_known_negative(value) for value in values)
+        return any(
+            _is_known_negative(value) or _has_meaningful_value(value)
+            for value in values
+        )
     if category == "hepatic_function":
         return _is_known_negative(
             patient_context.get("hepatic_function")

@@ -49,10 +49,15 @@ DANGEROUS_INGREDIENT_FUZZY_PAIRS = {
     ("cefazolin", "cefuroxime"),
     ("cefuroxime", "cefazolin"),
 }
+UNIT_PATTERN = r"mcg|µg|mg|g|ml|iu|ui"
 STRENGTH_RE = re.compile(
     r"(?<![\w.])"
+    rf"(?:(?P<ratio_value>\d+(?:[.,]\d+)?)\s*"
+    rf"(?P<ratio_unit>{UNIT_PATTERN})\s*/\s*"
+    rf"(?:\d+(?:[.,]\d+)?\s*)?(?P<ratio_denominator_unit>{UNIT_PATTERN})"
+    r"|"
     r"(?P<value>\d+(?:[.,]\d+)?(?:\s*/\s*\d+(?:[.,]\d+)?)?)"
-    r"\s*(?P<unit>mcg|µg|mg|g|ml|iu|ui)"
+    rf"\s*(?P<unit>{UNIT_PATTERN}))"
     r"(?![A-Za-z])",
     re.IGNORECASE,
 )
@@ -82,8 +87,9 @@ def extract_strengths_and_clean_name(raw_name: str) -> dict[str, Any]:
     has_combination_strength = False
     for match in STRENGTH_RE.finditer(text):
         raw = match.group(0).strip()
-        raw_value = re.sub(r"\s+", "", match.group("value"))
-        unit = match.group("unit")
+        value = match.group("ratio_value") or match.group("value")
+        unit = match.group("ratio_unit") or match.group("unit")
+        raw_value = re.sub(r"\s+", "", value)
         normalized_unit = "IU" if unit.lower() in {"iu", "ui"} else unit.lower()
         is_combination = "/" in raw_value
         has_combination_strength = (

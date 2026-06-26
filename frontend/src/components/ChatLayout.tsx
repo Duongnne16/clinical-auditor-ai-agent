@@ -3,8 +3,9 @@ import { FileText, PanelRightOpen, Plus } from 'lucide-react'
 import { auditPrescription } from '../api/prescriptionAuditApi'
 import ChatInput from './ChatInput'
 import ChatMessage from './ChatMessage'
+import DrugChatPanel from './DrugChatPanel'
 import DoctorMemoryPanel from './DoctorMemoryPanel'
-import type { ChatMessageItem } from '../types/chat'
+import type { AuditMessageItem } from '../types/auditConversation'
 import type { DoctorMemoryNote } from '../types/doctorNote'
 import type {
   PatientContext,
@@ -19,6 +20,8 @@ type DemoCase = {
   patientContext: PatientContext
   queryTypes: string[]
 }
+
+type CenterMode = 'audit' | 'drug_chat'
 
 const demoCases: DemoCase[] = [
   {
@@ -73,7 +76,8 @@ const defaultPatientContext: PatientContext = {
 const createMessageId = () => crypto.randomUUID()
 
 export default function ChatLayout() {
-  const [messages, setMessages] = useState<ChatMessageItem[]>([])
+  const [centerMode, setCenterMode] = useState<CenterMode>('audit')
+  const [messages, setMessages] = useState<AuditMessageItem[]>([])
   const [inputValue, setInputValue] = useState('')
   const [selectedDemoId, setSelectedDemoId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -116,6 +120,7 @@ export default function ChatLayout() {
   }
 
   const handleDemoClick = (demo: DemoCase) => {
+    setCenterMode('audit')
     setInputValue(demo.prescriptionText)
     setSelectedDemoId(demo.id)
     setInputFocusSignal((currentSignal) => currentSignal + 1)
@@ -145,7 +150,7 @@ export default function ChatLayout() {
 
   const replaceAssistantMessage = (
     messageId: string,
-    nextMessage: Partial<ChatMessageItem>,
+    nextMessage: Partial<AuditMessageItem>,
   ) => {
     setMessages((currentMessages) =>
       currentMessages.map((message) =>
@@ -162,12 +167,12 @@ export default function ChatLayout() {
     }
 
     const loadingMessageId = createMessageId()
-    const userMessage: ChatMessageItem = {
+    const userMessage: AuditMessageItem = {
       id: createMessageId(),
       role: 'user',
       content: trimmedInput,
     }
-    const loadingMessage: ChatMessageItem = {
+    const loadingMessage: AuditMessageItem = {
       id: loadingMessageId,
       role: 'assistant',
       content: 'Đang kiểm tra đơn thuốc...',
@@ -208,6 +213,7 @@ export default function ChatLayout() {
   }
 
   const handleNewAudit = () => {
+    setCenterMode('audit')
     setMessages([])
     setInputValue('')
     setSelectedDemoId(null)
@@ -266,8 +272,8 @@ export default function ChatLayout() {
 
       <main className="flex min-w-0 flex-1 flex-col bg-white">
         <header className="shrink-0 border-b border-gray-200 bg-white/95 px-4 py-4 backdrop-blur sm:px-6">
-          <div className="mx-auto flex max-w-3xl items-center justify-between">
-            <div>
+          <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
               <p className="text-base font-semibold text-gray-900">
                 Clinical Auditor AI Agent
               </p>
@@ -275,22 +281,53 @@ export default function ChatLayout() {
                 OCR/PDF upload coming later
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setIsMemoryPanelOpen(true)
-                setIsMemoryDrawerOpen(true)
-              }}
-              className={`items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300 ${
-                isMemoryPanelOpen ? 'inline-flex xl:hidden' : 'inline-flex'
-              }`}
-            >
-              <PanelRightOpen size={15} />
-              Doctor Memory
-            </button>
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex rounded-xl border border-gray-200 bg-gray-50 p-1">
+                <button
+                  type="button"
+                  onClick={() => setCenterMode('audit')}
+                  className={`rounded-lg px-3 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-gray-300 ${
+                    centerMode === 'audit'
+                      ? 'bg-white text-gray-950 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-950'
+                  }`}
+                >
+                  Kiểm tra đơn thuốc
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCenterMode('drug_chat')}
+                  className={`rounded-lg px-3 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-gray-300 ${
+                    centerMode === 'drug_chat'
+                      ? 'bg-white text-gray-950 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-950'
+                  }`}
+                >
+                  Hỏi về thuốc
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMemoryPanelOpen(true)
+                  setIsMemoryDrawerOpen(true)
+                }}
+                className={`items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300 ${
+                  isMemoryPanelOpen ? 'inline-flex xl:hidden' : 'inline-flex'
+                }`}
+              >
+                <PanelRightOpen size={15} />
+                Doctor Memory
+              </button>
+            </div>
           </div>
         </header>
 
+        <div
+          className={
+            centerMode === 'audit' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'
+          }
+        >
         <section className="min-h-0 flex-1 overflow-y-auto bg-white">
           {messages.length === 0 ? (
             <div className="flex h-full items-center justify-center px-4">
@@ -339,6 +376,17 @@ export default function ChatLayout() {
           disabled={isSubmitting}
           focusSignal={inputFocusSignal}
         />
+        </div>
+
+        <div
+          className={
+            centerMode === 'drug_chat'
+              ? 'flex min-h-0 flex-1 flex-col'
+              : 'hidden'
+          }
+        >
+          <DrugChatPanel />
+        </div>
       </main>
 
       {isMemoryPanelOpen ? (

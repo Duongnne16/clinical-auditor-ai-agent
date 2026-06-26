@@ -82,6 +82,7 @@ class FakeDrugMappingService:
             "Levofloxacine 500mg",
             "Amoxicillin 875/125mg",
             "Losec (20mg)",
+            "Sucrate Gel",
         }:
             return {
                 "status": "unmatched",
@@ -422,6 +423,35 @@ def test_extract_strengths_and_clean_name() -> None:
     assert iu["strengths"][0]["strength_unit"] == "IU"
 
 
+def test_extract_ratio_strengths_and_preserves_slash_drug_names() -> None:
+    parsed = extract_strengths_and_clean_name(
+        "Sucralfate (Sucrate Gel) 1g/5mL"
+    )
+    spaced = extract_strengths_and_clean_name("Drug 250 mg / 5 mL")
+    slash_name = extract_strengths_and_clean_name(
+        "Amoxicillin/Clavulanate"
+    )
+
+    assert parsed == {
+        "clean_name": "Sucralfate (Sucrate Gel)",
+        "strengths": [
+            {
+                "strength_raw": "1g/5mL",
+                "strength_value": 1.0,
+                "strength_unit": "g",
+                "is_combination": False,
+            }
+        ],
+        "has_combination_strength": False,
+    }
+    assert "1g/" not in parsed["clean_name"]
+    assert not parsed["clean_name"].strip().endswith("/")
+    assert spaced["clean_name"] == "Drug"
+    assert spaced["strengths"][0]["strength_raw"] == "250 mg / 5 mL"
+    assert slash_name["clean_name"] == "Amoxicillin/Clavulanate"
+    assert slash_name["strengths"] == []
+
+
 def test_parenthetical_ingredient_fallback(
     service: NormalizeDrugsService,
 ) -> None:
@@ -560,6 +590,35 @@ def test_generic_first_brand_not_found_is_non_blocking(
     ] == "paracetamol"
     assert result["requires_review"] is False
     assert result["instruction"] == "Uống sau ăn"
+
+
+def test_generic_first_sucralfate_ratio_strength(
+    service: NormalizeDrugsService,
+) -> None:
+    result = service.normalize_medication(
+        {"raw_line": "2. Sucralfate (Sucrate Gel) 1g/5mL x 15 goi"}
+    )
+
+    assert result["generic_text"] == "Sucralfate"
+    assert result["brand_text"] == "Sucrate Gel"
+    assert result["strength_text"] == "1g/5mL"
+    assert result["mapping_status"] == "ingredient_with_brand"
+    ingredient = result["active_ingredients"][0]
+    assert ingredient["name"] == "Sucralfate"
+    assert ingredient["strength_raw"] == "1g/5mL"
+    assert ingredient["strength_value"] == 1.0
+    assert ingredient["strength_unit"] == "g"
+    assert ingredient["evidence_slug"] == "sucralfate"
+    candidates = [
+        result["generic_text"],
+        ingredient["name"],
+        *[
+            candidate["matched_brand"]
+            for candidate in result["mapping_candidates"]
+        ],
+    ]
+    assert all("1g/" not in str(candidate) for candidate in candidates)
+    assert all(not str(candidate).strip().endswith("/") for candidate in candidates)
 
 
 def test_generic_first_exact_brand_verified(

@@ -223,6 +223,22 @@ def test_missing_information_is_reported_but_not_failure() -> None:
     assert "allergies" in result["missing_information"]
 
 
+def test_lactation_context_satisfies_pregnancy_lactation_requirement() -> None:
+    result = RiskAnalyzerService().analyze(
+        _normalized_result(),
+        _evidence_bundle(),
+        patient_context={
+            "age": 28,
+            "sex": "female",
+            "pregnancy_lactation": "Cho con bú",
+        },
+    )
+
+    assert result["status"] == "analysis_context_ready"
+    assert "pregnancy_status" not in result["missing_information"]
+    assert "pregnancy_lactation" not in result["missing_information"]
+
+
 def test_valid_fake_llm_output_is_preserved() -> None:
     llm = MethodLLM(
         {
