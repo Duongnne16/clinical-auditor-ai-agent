@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 
 from backend.app.core.dependencies import get_doctor_id
 from backend.app.schemas.prescription import PrescriptionAuditRequest
+from backend.app.services.doctor_memory_service import get_doctor_memory_service
 from backend.app.services.prescription_audit_service import PrescriptionAuditService
 
 router = APIRouter(prefix="/prescriptions", tags=["prescriptions"])
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/prescriptions", tags=["prescriptions"])
 
 @lru_cache
 def get_prescription_audit_service() -> PrescriptionAuditService:
-    return PrescriptionAuditService()
+    return PrescriptionAuditService(doctor_memory_service=get_doctor_memory_service())
 
 
 @router.post("/audit")

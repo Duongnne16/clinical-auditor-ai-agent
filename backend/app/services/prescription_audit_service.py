@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Callable, Iterable
 
+from backend.app.services.doctor_memory_service import (
+    DOCTOR_MEMORY_LABEL,
+)
+from backend.app.services.doctor_report_text_safety import sanitize_doctor_report_text
 from backend.app.services.doctor_report_composer_service import (
     DoctorReportComposerService,
 )
@@ -33,6 +37,10 @@ def _list_from_result(result: dict[str, Any] | None, key: str) -> list[str]:
     return [str(value) for value in values if value]
 
 
+def _empty_doctor_memory() -> dict[str, list[dict[str, Any]]]:
+    return {"matched_notes": []}
+
+
 class PrescriptionAuditService:
     """Orchestrate prescription check, risk analysis, and report generation."""
 
@@ -43,6 +51,7 @@ class PrescriptionAuditService:
         doctor_report_composer_service: Any | None = None,
         safety_layer_service: Any | None = None,
         prescription_document_parser: Any | None = None,
+        doctor_memory_service: Any | None = None,
         risk_analyzer_service_factory: Callable[..., Any] | None = None,
         gemini_client_factory: Callable[[], Any] | None = None,
     ) -> None:
@@ -59,6 +68,7 @@ class PrescriptionAuditService:
         self.prescription_document_parser = (
             prescription_document_parser or PrescriptionDocumentParser()
         )
+        self.doctor_memory_service = doctor_memory_service
         self.risk_analyzer_service_factory = (
             risk_analyzer_service_factory or RiskAnalyzerService
         )
@@ -110,6 +120,7 @@ class PrescriptionAuditService:
         prescription_check: dict[str, Any] | None = None,
         risk_analysis: dict[str, Any] | None = None,
         report: dict[str, Any] | None = None,
+        doctor_memory: dict[str, Any] | None = None,
         warnings: list[str] | None = None,
         errors: list[str] | None = None,
     ) -> dict[str, Any]:
@@ -125,9 +136,67 @@ class PrescriptionAuditService:
             "prescription_check": prescription_check,
             "risk_analysis": risk_analysis,
             "report": report,
+            "doctor_memory": doctor_memory or _empty_doctor_memory(),
             "warnings": _deduplicate(merged_warnings),
             "errors": _deduplicate(merged_errors),
         }
+
+    @staticmethod
+    def _safe_memory_note_text(note: dict[str, Any]) -> str:
+        title = str(note.get("title") or "").strip()
+        text = str(note.get("note_text") or "").strip()
+        combined = f"{title}: {text}" if title and text else title or text
+        return sanitize_doctor_report_text(combined).strip()
+
+    @classmethod
+    def _attach_doctor_memory_to_report(
+        cls,
+        report: dict[str, Any],
+        doctor_memory: dict[str, Any],
+    ) -> dict[str, Any]:
+        output = dict(report)
+        output["doctor_memory"] = doctor_memory
+        matched_notes = doctor_memory.get("matched_notes")
+        if not isinstance(matched_notes, list) or not matched_notes:
+            return output
+
+        lines = [str(output.get("doctor_facing_response") or "").rstrip()]
+        lines.extend(["", f"{DOCTOR_MEMORY_LABEL}:"])
+        for note in matched_notes[:3]:
+            if not isinstance(note, dict):
+                continue
+            safe_text = cls._safe_memory_note_text(note)
+            if safe_text:
+                lines.append(f"* {safe_text}")
+        output["doctor_facing_response"] = "\n".join(line for line in lines if line is not None).strip()
+        return output
+
+    def _retrieve_doctor_memory(
+        self,
+        *,
+        doctor_id: str | None,
+        normalized_result: dict[str, Any],
+        patient_context: dict[str, Any],
+        risk_analysis: dict[str, Any],
+    ) -> tuple[dict[str, Any], list[str]]:
+        if self.doctor_memory_service is None:
+            return _empty_doctor_memory(), []
+        try:
+            memory = self.doctor_memory_service.retrieve_for_audit_context(
+                doctor_id=doctor_id,
+                normalized_result=normalized_result,
+                patient_context=patient_context,
+                risk_analysis=risk_analysis,
+                max_notes=3,
+            )
+        except Exception:
+            return _empty_doctor_memory(), ["doctor_memory_retrieval_failed"]
+        if not isinstance(memory, dict):
+            return _empty_doctor_memory(), []
+        notes = memory.get("matched_notes")
+        if not isinstance(notes, list):
+            return _empty_doctor_memory(), []
+        return {"matched_notes": notes[:3]}, []
 
     def _create_risk_analyzer(self, use_gemini: bool) -> Any:
         if use_gemini:
@@ -264,12 +333,21 @@ class PrescriptionAuditService:
                 errors=["report_generation_failed"],
             )
 
+        doctor_memory, memory_warnings = self._retrieve_doctor_memory(
+            doctor_id=doctor_id,
+            normalized_result=normalized_result,
+            patient_context=context,
+            risk_analysis=risk_analysis,
+        )
+        report = self._attach_doctor_memory_to_report(report, doctor_memory)
+
         return self._base_response(
             status=self._top_level_status(report),
             prescription_check=prescription_check,
             risk_analysis=risk_analysis,
             report=report,
-            warnings=parser_warnings,
+            doctor_memory=doctor_memory,
+            warnings=[*parser_warnings, *memory_warnings],
         )
 
     def get_stats(self) -> dict[str, Any]:
@@ -293,11 +371,18 @@ class PrescriptionAuditService:
             if hasattr(self.doctor_report_composer_service, "get_stats")
             else None
         )
+        memory_stats = (
+            self.doctor_memory_service.get_stats()
+            if self.doctor_memory_service is not None
+            and hasattr(self.doctor_memory_service, "get_stats")
+            else None
+        )
         return {
             "service": "PrescriptionAuditService",
             "prescription_check_service": checker_stats,
             "report_generator_service": reporter_stats,
             "doctor_report_composer_service": composer_stats,
             "safety_layer_service": safety_stats,
+            "doctor_memory_service": memory_stats,
             "gemini_supported": self.gemini_client_factory is not None,
         }

@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.api.routes.chat import get_chat_query_service
 from backend.app.main import app
+from backend.app.services.doctor_memory_service import get_doctor_memory_service
 
 
 class FakeChatQueryService:
@@ -33,12 +34,28 @@ class FakeChatQueryService:
         }
 
 
+class FakeDoctorMemoryService:
+    def save_note(self, **kwargs: Any) -> dict[str, Any]:
+        return kwargs
+
+    def search_notes(self, **kwargs: Any) -> list[dict[str, Any]]:
+        return []
+
+
 def _override_chat_service() -> None:
     app.dependency_overrides[get_chat_query_service] = FakeChatQueryService
 
 
 def _clear_chat_override() -> None:
     app.dependency_overrides.pop(get_chat_query_service, None)
+
+
+def _override_memory_service() -> None:
+    app.dependency_overrides[get_doctor_memory_service] = FakeDoctorMemoryService
+
+
+def _clear_memory_override() -> None:
+    app.dependency_overrides.pop(get_doctor_memory_service, None)
 
 
 def test_chat_route_returns_backward_compatible_answer_fields() -> None:
@@ -97,12 +114,16 @@ def test_chat_route_can_return_interaction_answer() -> None:
 
 
 def test_doctor_notes_use_the_development_doctor() -> None:
-    with TestClient(app) as client:
-        created = client.post(
-            "/api/v1/doctor-notes",
-            json={"content": "Placeholder note for skeleton test"},
-        )
-        listed = client.get("/api/v1/doctor-notes")
+    _override_memory_service()
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/v1/doctor-notes",
+                json={"content": "Placeholder note for skeleton test"},
+            )
+            listed = client.get("/api/v1/doctor-notes")
+    finally:
+        _clear_memory_override()
 
     assert created.status_code == 201
     assert created.json()["doctor_id"] == "dev-doctor-001"

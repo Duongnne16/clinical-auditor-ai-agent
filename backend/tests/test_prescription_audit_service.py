@@ -130,6 +130,26 @@ class FakeSafetyLayerService:
         return {"service": "FakeSafetyLayerService"}
 
 
+class FakeDoctorMemoryService:
+    def __init__(
+        self,
+        result: dict[str, Any] | None = None,
+        raises: bool = False,
+    ) -> None:
+        self.result = result if result is not None else {"matched_notes": []}
+        self.raises = raises
+        self.calls: list[dict[str, Any]] = []
+
+    def retrieve_for_audit_context(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        if self.raises:
+            raise RuntimeError("memory failed")
+        return self.result
+
+    def get_stats(self) -> dict[str, Any]:
+        return {"service": "FakeDoctorMemoryService"}
+
+
 class FakeGeminiFactory:
     def __init__(self) -> None:
         self.calls = 0
@@ -524,3 +544,132 @@ def test_non_structured_text_remains_unchanged() -> None:
     assert checker.calls[0]["prescription_text"] == text
     assert checker.calls[0]["patient_context"] == {"sex": "unknown"}
     assert "prescription_document_parser_applied" not in result["warnings"]
+
+
+def test_audit_includes_matching_doctor_memory_section() -> None:
+    normalized_result = {
+        "medications": [
+            {"active_ingredients": [{"evidence_slug": "levofloxacin"}]},
+            {"active_ingredients": [{"evidence_slug": "sucralfate"}]},
+        ],
+        "unique_evidence_slugs": ["levofloxacin", "sucralfate"],
+    }
+    memory = FakeDoctorMemoryService(
+        {
+            "matched_notes": [
+                {
+                    "note_id": "n1",
+                    "title": "Levofloxacin + Sucralfate",
+                    "note_text": "Rà soát thời điểm dùng.",
+                    "drug_pair_keys": ["levofloxacin|sucralfate"],
+                    "score": 9.5,
+                }
+            ]
+        }
+    )
+    service = PrescriptionAuditService(
+        prescription_check_service=FakePrescriptionCheckService(
+            _prescription_check(normalized_result=normalized_result)
+        ),
+        report_generator_service=FakeReportGeneratorService(_report("report_ready")),
+        doctor_report_composer_service=FakeDoctorReportComposerService(),
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(
+            FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
+        ),
+        doctor_memory_service=memory,
+    )
+
+    result = service.audit_text("1. Levofloxacin\n2. Sucralfate", doctor_id="doctor-1")
+
+    assert result["doctor_memory"]["matched_notes"][0]["note_id"] == "n1"
+    assert result["report"]["doctor_memory"] == result["doctor_memory"]
+    assert "Ghi chú riêng của bác sĩ" in result["report"]["doctor_facing_response"]
+    assert "Rà soát thời điểm dùng" in result["report"]["doctor_facing_response"]
+    assert memory.calls[0]["doctor_id"] == "doctor-1"
+    assert "evidence_sources" not in result["report"] or not any(
+        "Rà soát thời điểm dùng" in str(source)
+        for source in result["report"].get("evidence_sources", [])
+    )
+
+
+def test_audit_no_memory_does_not_alter_doctor_facing_response() -> None:
+    memory = FakeDoctorMemoryService({"matched_notes": []})
+    composer = FakeDoctorReportComposerService()
+    service = PrescriptionAuditService(
+        prescription_check_service=FakePrescriptionCheckService(),
+        report_generator_service=FakeReportGeneratorService(_report("report_ready")),
+        doctor_report_composer_service=composer,
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(
+            FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
+        ),
+        doctor_memory_service=memory,
+    )
+
+    result = service.audit_text("1. Omeprazol 20mg", doctor_id="doctor-1")
+
+    assert result["doctor_memory"] == {"matched_notes": []}
+    assert result["report"]["doctor_facing_response"] == composer.compose({})[
+        "doctor_facing_response"
+    ]
+    assert "Ghi chú riêng của bác sĩ" not in result["report"]["doctor_facing_response"]
+
+
+def test_audit_memory_failure_does_not_fail_audit() -> None:
+    service = PrescriptionAuditService(
+        prescription_check_service=FakePrescriptionCheckService(),
+        report_generator_service=FakeReportGeneratorService(_report("report_ready")),
+        doctor_report_composer_service=FakeDoctorReportComposerService(),
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(
+            FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
+        ),
+        doctor_memory_service=FakeDoctorMemoryService(raises=True),
+    )
+
+    result = service.audit_text("1. Omeprazol 20mg", doctor_id="doctor-1")
+
+    assert result["status"] == "success"
+    assert result["doctor_memory"] == {"matched_notes": []}
+    assert "doctor_memory_retrieval_failed" in result["warnings"]
+
+
+def test_doctor_memory_notes_are_sanitized_and_not_evidence_sources() -> None:
+    memory = FakeDoctorMemoryService(
+        {
+            "matched_notes": [
+                {
+                    "note_id": "n1",
+                    "title": "Private note",
+                    "note_text": "Tăng liều hoặc đổi thuốc.",
+                    "score": 8,
+                }
+            ]
+        }
+    )
+    report = _report("report_ready") | {
+        "evidence_sources": [{"chunk_id": "c1", "snippet": "medical evidence"}],
+        "markdown_report": "## Nguồn tham khảo\n- c1",
+    }
+    service = PrescriptionAuditService(
+        prescription_check_service=FakePrescriptionCheckService(),
+        report_generator_service=FakeReportGeneratorService(report),
+        doctor_report_composer_service=FakeDoctorReportComposerService(),
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(
+            FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
+        ),
+        doctor_memory_service=memory,
+    )
+
+    result = service.audit_text("1. Omeprazol 20mg", doctor_id="doctor-1")
+    doctor_text = result["report"]["doctor_facing_response"]
+
+    assert "tăng liều" not in doctor_text.casefold()
+    assert "đổi thuốc" not in doctor_text.casefold()
+    assert "Ghi chú riêng của bác sĩ" in doctor_text
+    assert result["report"]["evidence_sources"] == [
+        {"chunk_id": "c1", "snippet": "medical evidence"}
+    ]
+    assert "Private note" not in result["report"]["markdown_report"]
