@@ -1,6 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
-import { FileText, LogOut, PanelRightOpen, Plus } from 'lucide-react'
-import { auditPrescription } from '../api/prescriptionAuditApi'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  Clock3,
+  FileText,
+  History,
+  Loader2,
+  LogOut,
+  PanelRightOpen,
+  Plus,
+} from 'lucide-react'
+import {
+  auditPrescription,
+  getPrescriptionHistory,
+  listPrescriptionHistory,
+} from '../api/prescriptionAuditApi'
 import ChatInput from './ChatInput'
 import ChatMessage from './ChatMessage'
 import DrugChatPanel from './DrugChatPanel'
@@ -11,6 +23,8 @@ import type {
   PatientContext,
   PrescriptionAuditRequest,
   PrescriptionAuditResponse,
+  PrescriptionHistoryDetail,
+  PrescriptionHistoryListItem,
 } from '../types/prescriptionAudit'
 
 type DemoCase = {
@@ -78,6 +92,115 @@ const defaultPatientContext: PatientContext = {
 }
 
 const createMessageId = () => crypto.randomUUID()
+const HISTORY_PAGE_SIZE = 20
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+const mergeHistoryItems = (
+  currentItems: PrescriptionHistoryListItem[],
+  nextItems: PrescriptionHistoryListItem[],
+): PrescriptionHistoryListItem[] => {
+  const seenIds = new Set<number>()
+  const merged: PrescriptionHistoryListItem[] = []
+
+  for (const item of [...currentItems, ...nextItems]) {
+    if (seenIds.has(item.id)) {
+      continue
+    }
+    seenIds.add(item.id)
+    merged.push(item)
+  }
+
+  return merged
+}
+
+const formatHistoryDate = (value: string): string => {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Không rõ thời gian'
+  }
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+const historyStatusText = (item: PrescriptionHistoryListItem): string => {
+  const parts = [item.overall_risk_level, item.status]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+
+  return parts.length > 0 ? parts.join(' Â· ') : 'Chưa có trạng thái'
+}
+
+const buildFallbackAuditResponse = (
+  detail: PrescriptionHistoryDetail,
+): PrescriptionAuditResponse => {
+  const reportPayload = isObjectRecord(detail.report?.report_payload)
+    ? detail.report.report_payload
+    : null
+  const report = reportPayload
+    ? (reportPayload as PrescriptionAuditResponse['report'])
+    : detail.report
+      ? {
+          status: detail.report.report_status,
+          summary: detail.report.summary,
+          doctor_facing_response: detail.report.doctor_facing_response,
+        }
+      : null
+
+  return {
+    status: detail.status,
+    warnings: Array.isArray(detail.warnings) ? detail.warnings.map(String) : [],
+    errors: Array.isArray(detail.errors) ? detail.errors.map(String) : [],
+    report,
+  }
+}
+
+function HistoryListItem({
+  item,
+  isLoading,
+  disabled,
+  onClick,
+}: {
+  item: PrescriptionHistoryListItem
+  isLoading: boolean
+  disabled: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left text-xs text-gray-700 transition hover:bg-gray-100 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-gray-300 disabled:cursor-wait disabled:opacity-60"
+    >
+      {isLoading ? (
+        <Loader2 className="mt-0.5 shrink-0 animate-spin" size={15} />
+      ) : (
+        <Clock3 className="mt-0.5 shrink-0" size={15} />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block font-medium text-gray-900">
+          {formatHistoryDate(item.created_at)}
+        </span>
+        <span className="mt-0.5 block truncate text-gray-600">
+          {historyStatusText(item)}
+        </span>
+        {item.report_status ? (
+          <span className="mt-0.5 block truncate text-gray-500">
+            Report: {item.report_status}
+          </span>
+        ) : null}
+      </span>
+    </button>
+  )
+}
 
 export default function ChatLayout({ onLogout }: ChatLayoutProps) {
   const [centerMode, setCenterMode] = useState<CenterMode>('audit')
@@ -93,8 +216,64 @@ export default function ChatLayout({ onLogout }: ChatLayoutProps) {
   >([])
   const [isMemoryPanelOpen, setIsMemoryPanelOpen] = useState(true)
   const [isMemoryDrawerOpen, setIsMemoryDrawerOpen] = useState(false)
+  const [historyItems, setHistoryItems] = useState<PrescriptionHistoryListItem[]>(
+    [],
+  )
+  const [historyOffset, setHistoryOffset] = useState(0)
+  const [hasMoreHistory, setHasMoreHistory] = useState(false)
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false)
+  const [isHistoryLoadingMore, setIsHistoryLoadingMore] = useState(false)
+  const [historyError, setHistoryError] = useState('')
+  const [loadingHistoryId, setLoadingHistoryId] = useState<number | null>(null)
   const messageEndRef = useRef<HTMLDivElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  const loadHistoryPage = useCallback(
+    async ({ offset, append }: { offset: number; append: boolean }) => {
+      if (append) {
+        setIsHistoryLoadingMore(true)
+      } else {
+        setIsHistoryLoading(true)
+      }
+      setHistoryError('')
+
+      try {
+        const nextItems = await listPrescriptionHistory({
+          limit: HISTORY_PAGE_SIZE,
+          offset,
+        })
+        setHistoryItems((currentItems) =>
+          append ? mergeHistoryItems(currentItems, nextItems) : nextItems,
+        )
+        setHistoryOffset(offset + nextItems.length)
+        setHasMoreHistory(nextItems.length === HISTORY_PAGE_SIZE)
+      } catch (error) {
+        setHistoryError(
+          error instanceof Error
+            ? error.message
+            : 'Không thể tải lịch sử kiểm tra.',
+        )
+      } finally {
+        setIsHistoryLoading(false)
+        setIsHistoryLoadingMore(false)
+      }
+    },
+    [],
+  )
+
+  const refreshHistory = useCallback(async () => {
+    await loadHistoryPage({ offset: 0, append: false })
+  }, [loadHistoryPage])
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void refreshHistory()
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [refreshHistory])
 
   useEffect(() => {
     const latestMessage = messages[messages.length - 1]
@@ -162,6 +341,51 @@ export default function ChatLayout({ onLogout }: ChatLayoutProps) {
     )
   }
 
+  const handleHistoryClick = async (historyId: number) => {
+    if (loadingHistoryId !== null) {
+      return
+    }
+
+    setLoadingHistoryId(historyId)
+    setHistoryError('')
+
+    try {
+      const detail = await getPrescriptionHistory(historyId)
+      const auditResult = isObjectRecord(detail.audit_payload)
+        ? (detail.audit_payload as PrescriptionAuditResponse)
+        : buildFallbackAuditResponse(detail)
+
+      setCenterMode('audit')
+      setMessages([
+        {
+          id: createMessageId(),
+          role: 'user',
+          content: detail.prescription_text,
+        },
+        {
+          id: createMessageId(),
+          role: 'assistant',
+          content: '',
+          auditResult,
+        },
+      ])
+      setInputValue('')
+      setSelectedDemoId(null)
+      setLatestAuditResult(auditResult)
+      setRelatedMemoryNotes(auditResult.doctor_memory?.matched_notes || [])
+      setIsMemoryPanelOpen(true)
+      setIsMemoryDrawerOpen(false)
+    } catch (error) {
+      setHistoryError(
+        error instanceof Error
+          ? error.message
+          : 'Không thể mở lịch sử kiểm tra.',
+      )
+    } finally {
+      setLoadingHistoryId(null)
+    }
+  }
+
   const handleSend = async () => {
     const trimmedInput = inputValue.trim()
 
@@ -202,6 +426,7 @@ export default function ChatLayout({ onLogout }: ChatLayoutProps) {
         status: undefined,
         auditResult,
       })
+      void refreshHistory()
     } catch (error) {
       replaceAssistantMessage(loadingMessageId, {
         content:
@@ -249,6 +474,71 @@ export default function ChatLayout({ onLogout }: ChatLayoutProps) {
             <Plus size={16} />
             New audit
           </button>
+
+          <div className="mt-6 space-y-2">
+            <div className="flex items-center justify-between gap-2 px-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Lịch sử kiểm tra
+              </p>
+              {isHistoryLoading && historyItems.length > 0 ? (
+                <Loader2 className="animate-spin text-gray-400" size={14} />
+              ) : null}
+            </div>
+
+            {isHistoryLoading && historyItems.length === 0 ? (
+              <div className="flex items-center gap-2 px-3 py-2 text-xs text-gray-500">
+                <Loader2 className="animate-spin" size={14} />
+                Đang tải lịch sử...
+              </div>
+            ) : null}
+
+            {!isHistoryLoading && historyItems.length === 0 && !historyError ? (
+              <p className="px-3 py-2 text-xs leading-5 text-gray-500">
+                Chua co lan kiem tra nao.
+              </p>
+            ) : null}
+
+            {historyItems.length > 0 ? (
+              <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
+                {historyItems.map((item) => (
+                  <HistoryListItem
+                    key={item.id}
+                    item={item}
+                    isLoading={loadingHistoryId === item.id}
+                    disabled={loadingHistoryId !== null}
+                    onClick={() => void handleHistoryClick(item.id)}
+                  />
+                ))}
+              </div>
+            ) : null}
+
+            {historyError ? (
+              <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
+                {historyError}
+              </p>
+            ) : null}
+
+            {hasMoreHistory ? (
+              <button
+                type="button"
+                onClick={() =>
+                  void loadHistoryPage({
+                    offset: historyOffset,
+                    append: true,
+                  })
+                }
+                disabled={isHistoryLoadingMore || isHistoryLoading}
+                className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-gray-300 disabled:cursor-wait disabled:text-gray-400"
+              >
+                {isHistoryLoadingMore ? (
+                  <Loader2 className="animate-spin" size={14} />
+                ) : (
+                  <History size={14} />
+                )}
+                Táº£i thÃªm
+              </button>
+            ) : null}
+          </div>
 
           <div className="mt-6 space-y-2">
             <p className="px-2 text-xs font-medium uppercase tracking-wide text-gray-500">

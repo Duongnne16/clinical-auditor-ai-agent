@@ -1,5 +1,7 @@
 import { apiFetch } from './client'
 import type {
+  PrescriptionHistoryDetail,
+  PrescriptionHistoryListItem,
   PrescriptionAuditRequest,
   PrescriptionAuditResponse,
 } from '../types/prescriptionAudit'
@@ -96,4 +98,68 @@ export async function auditPrescription(
   } finally {
     window.clearTimeout(timeoutId)
   }
+}
+
+type HistoryListOptions = {
+  limit?: number
+  offset?: number
+}
+
+const readJson = async (response: Response): Promise<unknown> => {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
+const ensureOk = async (
+  response: Response,
+  fallbackMessage: string,
+): Promise<unknown> => {
+  const payload = await readJson(response)
+
+  if (!response.ok) {
+    const message = extractErrorMessage(payload)
+    throw new Error(message || `${fallbackMessage} HTTP ${response.status}.`)
+  }
+
+  return payload
+}
+
+export async function listPrescriptionHistory({
+  limit = 20,
+  offset = 0,
+}: HistoryListOptions = {}): Promise<PrescriptionHistoryListItem[]> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  })
+  const response = await apiFetch(`/prescriptions/history?${params.toString()}`)
+  const payload = await ensureOk(
+    response,
+    'API lá»‹ch sá»­ kiá»ƒm tra Ä‘Æ¡n thuá»‘c tráº£ vá» lá»—i',
+  )
+
+  if (!Array.isArray(payload)) {
+    throw new Error('API lá»‹ch sá»­ tráº£ vá» dá»¯ liá»‡u khÃ´ng há»£p lá»‡.')
+  }
+
+  return payload as PrescriptionHistoryListItem[]
+}
+
+export async function getPrescriptionHistory(
+  historyId: number,
+): Promise<PrescriptionHistoryDetail> {
+  const response = await apiFetch(`/prescriptions/history/${historyId}`)
+  const payload = await ensureOk(
+    response,
+    'API chi tiáº¿t lá»‹ch sá»­ kiá»ƒm tra Ä‘Æ¡n thuá»‘c tráº£ vá» lá»—i',
+  )
+
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('API chi tiáº¿t lá»‹ch sá»­ tráº£ vá» dá»¯ liá»‡u khÃ´ng há»£p lá»‡.')
+  }
+
+  return payload as PrescriptionHistoryDetail
 }

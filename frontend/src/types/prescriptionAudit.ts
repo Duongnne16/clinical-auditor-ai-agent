@@ -117,3 +117,37 @@ export type PrescriptionAuditResponse = {
   report?: Report | null
   doctor_memory?: DoctorMemoryResponse | null
 }
+
+export type ReportHistoryRead = {
+  id: number
+  prescription_history_id: number
+  report_status?: string | null
+  summary?: string | null
+  doctor_facing_response?: string | null
+  report_payload?: Record<string, unknown> | null
+  created_at: string
+}
+
+export type PrescriptionHistoryListItem = {
+  id: number
+  status?: string | null
+  overall_risk_level?: string | null
+  report_status?: string | null
+  created_at: string
+}
+
+export type PrescriptionHistoryDetail = {
+  id: number
+  prescription_text: string
+  patient_context?: Record<string, unknown> | null
+  query_types?: string[] | null
+  use_gemini: boolean
+  top_k_per_type: number
+  status?: string | null
+  overall_risk_level?: string | null
+  warnings?: unknown[] | null
+  errors?: unknown[] | null
+  audit_payload?: Record<string, unknown> | null
+  report?: ReportHistoryRead | null
+  created_at: string
+}
