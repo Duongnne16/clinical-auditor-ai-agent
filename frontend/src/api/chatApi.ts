@@ -1,7 +1,5 @@
+import { apiFetch } from './client'
 import type { ChatResponse } from '../types/chat'
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'
 
 const REQUEST_TIMEOUT_MS = 120_000
 const BACKEND_OFF_MESSAGE =
@@ -52,11 +50,8 @@ export async function sendChatMessage(message: string): Promise<ChatResponse> {
   const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
   try {
-    const response = await fetch(`${API_BASE_URL}/chat`, {
+    const response = await apiFetch('/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ message: trimmedMessage }),
       signal: controller.signal,
     })

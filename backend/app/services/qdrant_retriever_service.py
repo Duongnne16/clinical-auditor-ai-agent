@@ -4,6 +4,7 @@ import hashlib
 from typing import Any, Iterable
 
 from backend.app.core.config import get_settings
+from backend.app.services.embedding_model_cache import get_sentence_transformer
 
 
 SECTION_PRIORITIES: dict[str, list[str]] = {
@@ -190,13 +191,7 @@ class QdrantRetrieverService:
 
     def _get_embedding_model(self) -> Any:
         if self.embedding_model is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-            except ImportError as exc:
-                raise RuntimeError(
-                    "sentence-transformers is required for Qdrant retrieval"
-                ) from exc
-            self.embedding_model = SentenceTransformer(self.embedding_model_name)
+            self.embedding_model = get_sentence_transformer(self.embedding_model_name)
             self._embedding_backend = type(self.embedding_model).__name__
         return self.embedding_model
 
@@ -258,6 +253,44 @@ class QdrantRetrieverService:
             with_payload=True,
         )
         return list(getattr(response, "points", response or []))
+
+    def _scroll_points(
+        self,
+        evidence_slugs: list[str],
+        limit: int,
+        sections: list[str] | None = None,
+    ) -> list[Any]:
+        scroll_kwargs = {
+            "collection_name": self.collection_name,
+            "scroll_filter": self._build_filter(evidence_slugs, sections),
+            "limit": limit,
+            "with_payload": True,
+            "with_vectors": False,
+        }
+        attempts = [
+            scroll_kwargs,
+            {
+                **{
+                    key: value
+                    for key, value in scroll_kwargs.items()
+                    if key not in {"scroll_filter", "with_vectors"}
+                },
+                "query_filter": scroll_kwargs["scroll_filter"],
+            },
+            {
+                key: value
+                for key, value in scroll_kwargs.items()
+                if key not in {"scroll_filter", "with_vectors"}
+            },
+        ]
+        for attempt in attempts:
+            try:
+                response = self._get_client().scroll(**attempt)
+                points = response[0] if isinstance(response, tuple) else response
+                return list(points or [])
+            except Exception:
+                continue
+        return []
 
     @staticmethod
     def _nested_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -423,24 +456,42 @@ class QdrantRetrieverService:
         final_query_text = build_query_text(
             slugs, normalized_query_type, query_text=query_text
         )
-        query_vector = self._embed(final_query_text)
         fetch_limit = max(top_k * 3, 20)
         warnings: list[str] = []
 
-        points = self._query_points(
-            query_vector=query_vector,
-            evidence_slugs=slugs,
-            sections=preferred_sections or None,
-            limit=fetch_limit,
+        use_payload_filter_fallback = (
+            self.settings.disable_local_embeddings and self.embedding_model is None
         )
-        if preferred_sections and not points:
-            warnings.append("section_filter_no_results_fallback_to_slug_only")
+        if use_payload_filter_fallback:
+            warnings.append("local_embeddings_disabled_payload_filter_fallback")
+            points = self._scroll_points(
+                evidence_slugs=slugs,
+                sections=preferred_sections or None,
+                limit=fetch_limit,
+            )
+        else:
+            query_vector = self._embed(final_query_text)
             points = self._query_points(
                 query_vector=query_vector,
                 evidence_slugs=slugs,
-                sections=None,
+                sections=preferred_sections or None,
                 limit=fetch_limit,
             )
+        if preferred_sections and not points:
+            warnings.append("section_filter_no_results_fallback_to_slug_only")
+            if use_payload_filter_fallback:
+                points = self._scroll_points(
+                    evidence_slugs=slugs,
+                    sections=None,
+                    limit=fetch_limit,
+                )
+            else:
+                points = self._query_points(
+                    query_vector=query_vector,
+                    evidence_slugs=slugs,
+                    sections=None,
+                    limit=fetch_limit,
+                )
 
         chunks = [
             self._public_chunk(point, slugs, preferred_sections) for point in points

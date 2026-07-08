@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FileText, PanelRightOpen, Plus } from 'lucide-react'
+import { FileText, LogOut, PanelRightOpen, Plus } from 'lucide-react'
 import { auditPrescription } from '../api/prescriptionAuditApi'
 import ChatInput from './ChatInput'
 import ChatMessage from './ChatMessage'
@@ -22,6 +22,10 @@ type DemoCase = {
 }
 
 type CenterMode = 'audit' | 'drug_chat'
+
+type ChatLayoutProps = {
+  onLogout: () => void
+}
 
 const demoCases: DemoCase[] = [
   {
@@ -75,7 +79,7 @@ const defaultPatientContext: PatientContext = {
 
 const createMessageId = () => crypto.randomUUID()
 
-export default function ChatLayout() {
+export default function ChatLayout({ onLogout }: ChatLayoutProps) {
   const [centerMode, setCenterMode] = useState<CenterMode>('audit')
   const [messages, setMessages] = useState<AuditMessageItem[]>([])
   const [inputValue, setInputValue] = useState('')
@@ -136,7 +140,6 @@ export default function ChatLayout() {
 
     return {
       prescription_text: prescriptionText,
-      doctor_id: 'dev-doctor-001',
       patient_context: activeDemo
         ? activeDemo.patientContext
         : defaultPatientContext,
@@ -264,9 +267,16 @@ export default function ChatLayout() {
             ))}
           </div>
 
-          <p className="mt-auto rounded-lg bg-gray-100 px-3 py-3 text-xs leading-5 text-gray-500">
-            OCR/PDF upload coming later
-          </p>
+          <div className="mt-auto space-y-2">
+            <button
+              type="button"
+              onClick={onLogout}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-100 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-gray-300"
+            >
+              <LogOut size={16} />
+              Đăng xuất
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -276,9 +286,6 @@ export default function ChatLayout() {
             <div className="min-w-0">
               <p className="text-base font-semibold text-gray-900">
                 Clinical Auditor AI Agent
-              </p>
-              <p className="text-xs text-gray-500 md:hidden">
-                OCR/PDF upload coming later
               </p>
             </div>
             <div className="flex min-w-0 items-center gap-2">
@@ -318,6 +325,14 @@ export default function ChatLayout() {
               >
                 <PanelRightOpen size={15} />
                 Doctor Memory
+              </button>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300 md:hidden"
+              >
+                <LogOut size={15} />
+                Đăng xuất
               </button>
             </div>
           </div>

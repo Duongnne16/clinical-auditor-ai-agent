@@ -40,6 +40,37 @@ CONNECTOR_PATTERNS = [
     r"\bvà\b",
 ]
 
+GENERIC_TERMS.update(
+    {
+        "bệnh nhân",
+        "cách dùng",
+        "chống chỉ định",
+        "dịch",
+        "dùng",
+        "không dùng khi nào",
+        "liều",
+        "lưu ý",
+        "suy thận",
+        "tác dụng không mong muốn",
+        "tác dụng phụ",
+        "thận",
+        "thận trọng",
+        "thuốc",
+        "uống",
+    }
+)
+CONNECTOR_PATTERNS[:0] = [
+    r"\bcó\s+tương\s+tác\s+với\b",
+    r"\bdùng\s+cùng\b",
+    r"\buống\s+cùng\b",
+    r"\bdùng\s+chung\b",
+    r"\buống\s+chung\b",
+    r"\bphối\s+hợp\s+với\b",
+    r"\bkết\s+hợp\s+với\b",
+    r"\bvới\b",
+    r"\bvà\b",
+]
+
 TRAILING_PATTERNS = [
     r"\bcó\s+tương\s+tác\b.*$",
     r"\bcó\s+sao\b.*$",
@@ -60,8 +91,33 @@ TRAILING_PATTERNS = [
     r"\bgì\b$",
 ]
 
+TRAILING_PATTERNS[:0] = [
+    r"\bcó\s+tương\s+tác\b.*$",
+    r"\bcó\s+sao\b.*$",
+    r"\bcó\s+ảnh\s+hưởng\b.*$",
+    r"\bcó\s+tác\s+dụng\s+phụ\b.*$",
+    r"\btác\s+dụng\s+phụ\b.*$",
+    r"\btác\s+dụng\s+không\s+mong\s+muốn\b.*$",
+    r"\bcần\s+thận\s+trọng\b.*$",
+    r"\bthận\s+trọng\b.*$",
+    r"\bchống\s+chỉ\s+định\b.*$",
+    r"\bkhông\s+dùng\s+khi\s+nào\b.*$",
+    r"\bliều\b.*$",
+    r"\bcách\s+dùng\b.*$",
+    r"\buống\s+thế\s+nào\b.*$",
+    r"\bdùng\s+cần\s+lưu\s+ý\b.*$",
+    r"\bcần\s+lưu\s+ý\b.*$",
+    r"\blưu\s+ý\b.*$",
+    r"\bkhông\b$",
+    r"\bgì\b$",
+]
+
 LEADING_NOISE_RE = re.compile(
     r"^(cho\s+tôi\s+hỏi|xin\s+hỏi|hỏi|thuốc|dịch\s+truyền)\s+",
+    flags=re.IGNORECASE,
+)
+LEADING_NOISE_RE = re.compile(
+    r"^(cho\s+tôi\s+hỏi|cho\s+tÃ´i\s+há»i|xin\s+hỏi|xin\s+há»i|hỏi|há»i|thuốc|thuá»‘c|dịch\s+truyền|dá»‹ch\s+truyá»n)\s+",
     flags=re.IGNORECASE,
 )
 DRUG_TOKEN_RE = re.compile(
@@ -74,6 +130,12 @@ def _fold_text(value: str) -> str:
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).replace(
         "đ", "d"
     )
+
+
+def _fold_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or "").casefold())
+    folded = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return folded.replace("đ", "d").replace("Ä‘", "d")
 
 
 def _clean_candidate(value: str) -> str:

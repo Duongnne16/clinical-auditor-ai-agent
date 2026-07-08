@@ -1,16 +1,32 @@
+from __future__ import annotations
+
+from collections.abc import Generator
+from pathlib import Path
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.api.routes.chat import get_chat_query_service
+from backend.app.core.security import create_access_token, hash_password
+from backend.app.db.models import Base, User
+from backend.app.db.session import get_db
 from backend.app.main import app
 from backend.app.services.doctor_memory_service import get_doctor_memory_service
 
 
 class FakeChatQueryService:
+    def __init__(self) -> None:
+        self.calls: list[Any] = []
+
     def answer(self, request: Any) -> dict[str, Any]:
+        self.calls.append(request)
         intent = request.intent or "single_drug_query"
-        answer = "Với dữ liệu hiện có, hệ thống ghi nhận thông tin cần rà soát."
+        answer = (
+            "Với dữ liệu hiện có, hệ thống ghi nhận thông tin cần rà soát."
+        )
         if "bài văn" in request.message:
             intent = "out_of_scope"
             answer = (
@@ -42,93 +58,170 @@ class FakeDoctorMemoryService:
         return []
 
 
-def _override_chat_service() -> None:
-    app.dependency_overrides[get_chat_query_service] = FakeChatQueryService
+@pytest.fixture()
+def placeholder_client(tmp_path: Path) -> Generator[TestClient, None, None]:
+    database_path = tmp_path / "placeholder.sqlite3"
+    engine = create_engine(
+        f"sqlite:///{database_path}",
+        connect_args={"check_same_thread": False},
+    )
+    testing_session = sessionmaker(
+        bind=engine, autoflush=False, expire_on_commit=False
+    )
+    Base.metadata.create_all(bind=engine)
+
+    def override_get_db() -> Generator[Session, None, None]:
+        with testing_session() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        client = TestClient(app)
+        client.testing_session = testing_session  # type: ignore[attr-defined]
+        yield client
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_chat_query_service, None)
+        app.dependency_overrides.pop(get_doctor_memory_service, None)
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
 
 
-def _clear_chat_override() -> None:
-    app.dependency_overrides.pop(get_chat_query_service, None)
+def _override_chat_service(
+    fake: FakeChatQueryService | None = None,
+) -> FakeChatQueryService:
+    service = fake or FakeChatQueryService()
+    app.dependency_overrides[get_chat_query_service] = lambda: service
+    return service
 
 
 def _override_memory_service() -> None:
     app.dependency_overrides[get_doctor_memory_service] = FakeDoctorMemoryService
 
 
-def _clear_memory_override() -> None:
-    app.dependency_overrides.pop(get_doctor_memory_service, None)
+def _create_user(
+    client: TestClient,
+    *,
+    doctor_id: str = "doctor-chat",
+    email: str = "chat@example.test",
+) -> User:
+    testing_session = client.testing_session  # type: ignore[attr-defined]
+    with testing_session() as session:
+        user = User(
+            doctor_id=doctor_id,
+            email=email,
+            full_name="Chat Doctor",
+            hashed_password=hash_password("secure-password-123"),
+            is_active=True,
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return user
 
 
-def test_chat_route_returns_backward_compatible_answer_fields() -> None:
+def _auth_headers(user: User) -> dict[str, str]:
+    token = create_access_token(
+        subject=str(user.id),
+        doctor_id=user.doctor_id,
+        email=user.email,
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_chat_route_without_token_returns_401(
+    placeholder_client: TestClient,
+) -> None:
     _override_chat_service()
-    try:
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/v1/chat",
-                json={"message": "Paracetamol có tác dụng phụ gì?"},
-            )
-    finally:
-        _clear_chat_override()
+
+    response = placeholder_client.post(
+        "/api/v1/chat",
+        json={"message": "Paracetamol có tác dụng phụ gì?"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_chat_route_returns_backward_compatible_answer_fields_with_jwt(
+    placeholder_client: TestClient,
+) -> None:
+    user = _create_user(placeholder_client, doctor_id="doctor-chat-token")
+    fake = _override_chat_service()
+
+    response = placeholder_client.post(
+        "/api/v1/chat",
+        headers=_auth_headers(user),
+        json={"message": "Paracetamol có tác dụng phụ gì?"},
+    )
 
     assert response.status_code == 200
     body = response.json()
-    assert body["doctor_id"] == "dev-doctor-001"
+    assert body["doctor_id"] == "doctor-chat-token"
+    assert body["doctor_id"] != "dev-doctor-001"
     assert body["intent"] == "single_drug_query"
     assert body["message"] == body["answer"]
     assert body["answer"]
     assert "Placeholder" not in body["disclaimer"]
     assert "không thay thế quyết định của bác sĩ/dược sĩ" in body["disclaimer"]
+    assert len(fake.calls) == 1
 
 
-def test_chat_route_can_return_out_of_scope_refusal() -> None:
+def test_chat_route_can_return_out_of_scope_refusal_with_jwt(
+    placeholder_client: TestClient,
+) -> None:
+    user = _create_user(
+        placeholder_client,
+        doctor_id="doctor-out-of-scope",
+        email="scope@example.test",
+    )
     _override_chat_service()
-    try:
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/v1/chat", json={"message": "Viết giúp tôi bài văn"}
-            )
-    finally:
-        _clear_chat_override()
+
+    response = placeholder_client.post(
+        "/api/v1/chat",
+        headers=_auth_headers(user),
+        json={"message": "Viết giúp tôi bài văn"},
+    )
 
     assert response.status_code == 200
     assert response.json()["intent"] == "out_of_scope"
     assert "chỉ hỗ trợ tra cứu" in response.json()["answer"]
 
 
-def test_chat_route_can_return_interaction_answer() -> None:
+def test_chat_route_can_return_interaction_answer_with_jwt(
+    placeholder_client: TestClient,
+) -> None:
+    user = _create_user(
+        placeholder_client,
+        doctor_id="doctor-interaction",
+        email="interaction@example.test",
+    )
     _override_chat_service()
-    try:
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/v1/chat",
-                json={
-                    "message": "Omeprazole có tương tác với Clopidogrel không?"
-                },
-            )
-    finally:
-        _clear_chat_override()
+
+    response = placeholder_client.post(
+        "/api/v1/chat",
+        headers=_auth_headers(user),
+        json={
+            "message": "Omeprazole có tương tác với Clopidogrel không?"
+        },
+    )
 
     assert response.status_code == 200
     body = response.json()
+    assert body["doctor_id"] == "doctor-interaction"
     assert body["intent"] == "drug_interaction_query"
     assert body["answer"]
 
 
-def test_doctor_notes_use_the_development_doctor() -> None:
+def test_doctor_notes_require_jwt_after_auth_migration(
+    placeholder_client: TestClient,
+) -> None:
     _override_memory_service()
-    try:
-        with TestClient(app) as client:
-            created = client.post(
-                "/api/v1/doctor-notes",
-                json={"content": "Placeholder note for skeleton test"},
-            )
-            listed = client.get("/api/v1/doctor-notes")
-    finally:
-        _clear_memory_override()
 
-    assert created.status_code == 201
-    assert created.json()["doctor_id"] == "dev-doctor-001"
-    assert listed.status_code == 200
-    assert any(
-        note["id"] == created.json()["id"] and "not a clinical conclusion" in note["disclaimer"]
-        for note in listed.json()
+    created = placeholder_client.post(
+        "/api/v1/doctor-notes",
+        json={"content": "Placeholder note for skeleton test"},
     )
+    listed = placeholder_client.get("/api/v1/doctor-notes")
+
+    assert created.status_code == 401
+    assert listed.status_code == 401

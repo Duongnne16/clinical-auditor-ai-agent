@@ -9,6 +9,7 @@ from functools import lru_cache
 from typing import Any, Iterable
 
 from backend.app.core.config import get_settings
+from backend.app.services.embedding_model_cache import get_sentence_transformer
 
 
 DOCTOR_MEMORY_LABEL = "Ghi chú riêng của bác sĩ"
@@ -111,13 +112,7 @@ class DoctorMemoryService:
 
     def _get_embedding_model(self) -> Any:
         if self.embedding_model is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-            except ImportError as exc:
-                raise RuntimeError(
-                    "sentence-transformers is required for doctor memory"
-                ) from exc
-            self.embedding_model = SentenceTransformer(self.embedding_model_name)
+            self.embedding_model = get_sentence_transformer(self.embedding_model_name)
             self._embedding_backend = type(self.embedding_model).__name__
         return self.embedding_model
 
@@ -327,6 +322,8 @@ class DoctorMemoryService:
             created_at=created_at,
             updated_at=updated_at,
         )
+        if self.settings.disable_local_embeddings and self.embedding_model is None:
+            raise RuntimeError("local embeddings are disabled")
         vector = self._embed(self.build_vector_text(payload))
         self.ensure_collection()
         self._get_client().upsert(
@@ -478,6 +475,12 @@ class DoctorMemoryService:
         if top_k <= 0:
             raise ValueError("top_k must be greater than 0")
         self.ensure_collection()
+        if self.settings.disable_local_embeddings and self.embedding_model is None:
+            return self._metadata_fallback_notes(
+                doctor_id=doctor_id,
+                query=query,
+                limit=top_k,
+            )
         points: list[Any] = []
         try:
             response = self._get_client().query_points(

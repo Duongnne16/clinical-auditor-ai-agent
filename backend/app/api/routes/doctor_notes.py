@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.core.dependencies import get_doctor_id
+from backend.app.core.dependencies import get_current_doctor_id
 from backend.app.db.models import DoctorNote
 from backend.app.db.session import get_db
 from backend.app.schemas.doctor_note import (
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 @router.post("", response_model=DoctorNoteRead, status_code=201)
 def create_doctor_note(
     payload: DoctorNoteCreate,
-    doctor_id: str = Depends(get_doctor_id),
+    doctor_id: str = Depends(get_current_doctor_id),
     db: Session = Depends(get_db),
     memory_service: DoctorMemoryService = Depends(get_doctor_memory_service),
 ) -> DoctorNote:
@@ -58,7 +58,7 @@ def create_doctor_note(
 def search_doctor_notes(
     q: str = Query(min_length=1),
     top_k: int = Query(default=5, gt=0, le=20),
-    doctor_id: str = Depends(get_doctor_id),
+    doctor_id: str = Depends(get_current_doctor_id),
     memory_service: DoctorMemoryService = Depends(get_doctor_memory_service),
 ) -> list[dict]:
     try:
@@ -70,7 +70,7 @@ def search_doctor_notes(
 
 @router.get("", response_model=list[DoctorNoteRead])
 def list_doctor_notes(
-    doctor_id: str = Depends(get_doctor_id),
+    doctor_id: str = Depends(get_current_doctor_id),
     db: Session = Depends(get_db),
 ) -> list[DoctorNote]:
     statement = (

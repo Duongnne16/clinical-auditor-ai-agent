@@ -17,7 +17,7 @@ except ImportError:  # pragma: no cover - tested via monkeypatch.
 
 
 DEFAULT_CATALOG_PATH = Path(
-    "data/processed/evidence_ingredients/evidence_ingredient_catalog.jsonl"
+    "data/processed/evidence_ingredients_v2/evidence_ingredient_catalog.jsonl"
 )
 MANUAL_ALIASES: dict[str, tuple[str, ...]] = {
     "acyclovir": ("aciclovir",),
@@ -507,39 +507,39 @@ class IngredientEvidenceResolver:
             )
 
         candidate_records: list[tuple[dict[str, Any], str, float]] = []
-        exact = self._exact_records(input_name)
-        if exact:
+        manual = self._manual_records(input_name)
+        if manual:
             candidate_records = [
-                (record, "exact", 1.0) for record in exact
+                (record, "manual_alias", 0.99)
+                for record in manual
             ]
         else:
-            manual = self._manual_records(input_name)
-            if manual:
+            exact = self._exact_records(input_name)
+            if exact:
                 candidate_records = [
-                    (record, "manual_alias", 0.99)
-                    for record in manual
+                    (record, "exact", 1.0) for record in exact
+                ]
+        if not candidate_records:
+            salt = self._salt_stripped_records(input_name)
+            if salt:
+                candidate_records = [
+                    (record, "salt_stripped_exact", 0.97)
+                    for record in salt
                 ]
             else:
-                salt = self._salt_stripped_records(input_name)
-                if salt:
+                prefix = self._prefix_stripped_records(input_name)
+                if prefix:
                     candidate_records = [
-                        (record, "salt_stripped_exact", 0.97)
-                        for record in salt
+                        (record, "prefix_stripped_exact", 0.94)
+                        for record in prefix
                     ]
-                else:
-                    prefix = self._prefix_stripped_records(input_name)
-                    if prefix:
-                        candidate_records = [
-                            (record, "prefix_stripped_exact", 0.94)
-                            for record in prefix
-                        ]
-                    elif self.enable_fuzzy:
-                        candidate_records = [
-                            (record, "fuzzy", score)
-                            for record, score in self._fuzzy_records(
-                                input_name
-                            )
-                        ]
+                elif self.enable_fuzzy:
+                    candidate_records = [
+                        (record, "fuzzy", score)
+                        for record, score in self._fuzzy_records(
+                            input_name
+                        )
+                    ]
 
         if not candidate_records:
             return self._unresolved(

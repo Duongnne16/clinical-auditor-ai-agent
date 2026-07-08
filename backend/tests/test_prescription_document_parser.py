@@ -72,6 +72,60 @@ def test_parses_canonical_outpatient_prescription() -> None:
     }
 
 
+def test_parses_utf8_outpatient_prescription_with_breastfeeding_context() -> None:
+    text = """ĐƠN NGOẠI TRÚ 1
+Bệnh viện: Bệnh viện A
+Khoa: Tiêu hóa
+Đơn thuốc
+I.THÔNG TIN BỆNH NHÂN
+Họ và tên: Hoàng Thị P.
+Tuổi: 28
+Nam/Nữ: Nữ
+Cân nặng: 60kg
+Địa chỉ: Nga Sơn, Thanh Hóa
+II. THÔNG TIN LÂM SÀNG
+Chẩn đoán: Viêm phế quản/loét dạ dày tá tràng
+Dị ứng thuốc: Không
+Bệnh nền: Không ghi nhận
+Chức năng gan: Bình thường
+Chức năng thận: Bình thường
+Thai kỳ/ cho con bú: Cho con bú
+Thuốc khác đang dùng: Không
+III. CHỈ ĐỊNH DÙNG THUỐC
+1.	Omeprazole (Losec) 20mg			x	15 viên
+Ngày uống 1 lần, mỗi lần 1 viên
+2.	Sucralfate (Sucrate Gel) 1g/5mL		x	15 gói
+Ngày uống 3 lần, mỗi lần 1 gói
+3.	Levofloxacine 500mg 			x	7 viên
+Ngày uống 1 viên
+
+					Ngày , tháng, năm
+					Bác sĩ khám bệnh
+"""
+
+    result = PrescriptionDocumentParser().parse(text)
+
+    assert result["applied"] is True
+    assert result["warnings"] == []
+    assert result["patient_context"]["patient_name"] == "Hoàng Thị P."
+    assert result["patient_context"]["sex"] == "female"
+    assert result["patient_context"]["diagnoses"] == [
+        "Viêm phế quản",
+        "loét dạ dày tá tràng",
+    ]
+    assert result["patient_context"]["hepatic_function"] == "Bình thường"
+    assert result["patient_context"]["renal_function"] == "Bình thường"
+    assert result["patient_context"]["pregnancy_lactation"] == "Cho con bú"
+    assert result["prescription_text"] == (
+        "1.\tOmeprazole (Losec) 20mg\t\t\tx\t15 viên\n"
+        "Ngày uống 1 lần, mỗi lần 1 viên\n"
+        "2.\tSucralfate (Sucrate Gel) 1g/5mL\t\tx\t15 gói\n"
+        "Ngày uống 3 lần, mỗi lần 1 gói\n"
+        "3.\tLevofloxacine 500mg \t\t\tx\t7 viên\n"
+        "Ngày uống 1 viên"
+    )
+
+
 def test_top_standalone_don_thuoc_title_is_not_medication_boundary() -> None:
     result = PrescriptionDocumentParser().parse(CANONICAL_DOCUMENT)
 

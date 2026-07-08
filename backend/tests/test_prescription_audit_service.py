@@ -4,7 +4,9 @@ from typing import Any
 
 import pytest
 
+from backend.app.services.prescription_audit_graph import PrescriptionAuditGraphService
 from backend.app.services.prescription_audit_service import PrescriptionAuditService
+from backend.app.services.doctor_memory_service import DOCTOR_MEMORY_LABEL
 
 
 def _prescription_check(
@@ -148,6 +150,30 @@ class FakeDoctorMemoryService:
 
     def get_stats(self) -> dict[str, Any]:
         return {"service": "FakeDoctorMemoryService"}
+
+
+class FakeContextAwareDoctorMemoryService(FakeDoctorMemoryService):
+    def retrieve_for_audit_context(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        normalized_result = kwargs.get("normalized_result") or {}
+        slugs = {
+            ingredient.get("evidence_slug")
+            for medication in normalized_result.get("medications", [])
+            for ingredient in medication.get("active_ingredients", [])
+            if isinstance(ingredient, dict)
+        }
+        if {"levofloxacin", "sucralfate"}.issubset(slugs):
+            return {
+                "matched_notes": [
+                    {
+                        "note_id": "levo-sucralfate",
+                        "title": "Levofloxacin + Sucralfate",
+                        "note_text": "RÃ  soÃ¡t thá»i Ä‘iá»ƒm dÃ¹ng.",
+                        "drug_pair_keys": ["levofloxacin|sucralfate"],
+                    }
+                ]
+            }
+        return {"matched_notes": []}
 
 
 class FakeGeminiFactory:
@@ -673,3 +699,96 @@ def test_doctor_memory_notes_are_sanitized_and_not_evidence_sources() -> None:
         {"chunk_id": "c1", "snippet": "medical evidence"}
     ]
     assert "Private note" not in result["report"]["markdown_report"]
+
+
+def test_graph_analysis_context_separates_evidence_and_doctor_memory() -> None:
+    evidence = {"unique_chunks": [{"chunk_id": "c1", "text": "Medical evidence"}]}
+    memory = {"matched_notes": [{"note_id": "n1", "note_text": "Private note"}]}
+
+    context = PrescriptionAuditGraphService.build_analysis_context(
+        medical_evidence_bundle=evidence,
+        doctor_memory=memory,
+    )
+
+    assert context["medical_evidence"] == evidence["unique_chunks"]
+    assert context["doctor_memory_notes"] == memory["matched_notes"]
+    assert context["context_rules"] == {
+        "medical_evidence_priority": "authoritative",
+        "doctor_memory_role": "private_context_only",
+    }
+
+
+def test_feature_flag_off_uses_legacy_audit_path() -> None:
+    checker = FakePrescriptionCheckService()
+    service = PrescriptionAuditService(
+        prescription_check_service=checker,
+        report_generator_service=FakeReportGeneratorService(_report("report_ready")),
+        doctor_report_composer_service=FakeDoctorReportComposerService(),
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(
+            FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
+        ),
+    )
+    service.use_langgraph_audit = False
+
+    result = service.audit_text("1. Omeprazol 20mg")
+
+    assert result["status"] == "success"
+    assert service._graph_service is None
+    assert checker.calls
+
+
+def test_graph_related_levofloxacin_sucralfate_returns_memory_note() -> None:
+    normalized_result = {
+        "medications": [
+            {"active_ingredients": [{"evidence_slug": "levofloxacin"}]},
+            {"active_ingredients": [{"evidence_slug": "sucralfate"}]},
+        ],
+        "unique_evidence_slugs": ["levofloxacin", "sucralfate"],
+    }
+    memory = FakeContextAwareDoctorMemoryService()
+    service = PrescriptionAuditService(
+        prescription_check_service=FakePrescriptionCheckService(
+            _prescription_check(normalized_result=normalized_result)
+        ),
+        report_generator_service=FakeReportGeneratorService(_report("report_ready")),
+        doctor_report_composer_service=FakeDoctorReportComposerService(),
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(
+            FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
+        ),
+        doctor_memory_service=memory,
+    )
+
+    result = service.audit_text("1. Levofloxacin\n2. Sucralfate", doctor_id="doctor-1")
+
+    assert result["doctor_memory"]["matched_notes"][0]["note_id"] == "levo-sucralfate"
+    assert DOCTOR_MEMORY_LABEL in result["report"]["doctor_facing_response"]
+    assert memory.calls[0]["risk_analysis"] is None
+
+
+def test_graph_unrelated_paracetamol_cetirizine_excludes_memory_note() -> None:
+    normalized_result = {
+        "medications": [
+            {"active_ingredients": [{"evidence_slug": "paracetamol"}]},
+            {"active_ingredients": [{"evidence_slug": "cetirizine"}]},
+        ],
+        "unique_evidence_slugs": ["paracetamol", "cetirizine"],
+    }
+    service = PrescriptionAuditService(
+        prescription_check_service=FakePrescriptionCheckService(
+            _prescription_check(normalized_result=normalized_result)
+        ),
+        report_generator_service=FakeReportGeneratorService(_report("report_ready")),
+        doctor_report_composer_service=FakeDoctorReportComposerService(),
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(
+            FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
+        ),
+        doctor_memory_service=FakeContextAwareDoctorMemoryService(),
+    )
+
+    result = service.audit_text("1. Paracetamol\n2. Cetirizine", doctor_id="doctor-1")
+
+    assert result["doctor_memory"] == {"matched_notes": []}
+    assert DOCTOR_MEMORY_LABEL not in result["report"]["doctor_facing_response"]

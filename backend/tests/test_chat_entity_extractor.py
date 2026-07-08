@@ -8,6 +8,17 @@ def test_extracts_interaction_drug_mentions() -> None:
         "Aspirin",
         "Warfarin",
     ]
+
+
+def test_extracts_utf8_demo_chat_drug_mentions() -> None:
+    extractor = ChatEntityExtractor()
+
+    assert extractor.extract("Omeprazole có tương tác với Clopidogrel không?") == [
+        "Omeprazole",
+        "Clopidogrel",
+    ]
+    assert extractor.extract("Paracetamol có tác dụng phụ gì?") == ["Paracetamol"]
+    assert extractor.extract("Levofloxacin dùng cần lưu ý gì?") == ["Levofloxacin"]
     assert extractor.extract(
         "Levofloxacin dùng cùng Sucralfate có sao không?"
     ) == ["Levofloxacin", "Sucralfate"]
@@ -25,4 +36,3 @@ def test_extracts_single_drug_mentions() -> None:
     assert extractor.extract("Dịch truyền Paracetamol có tác dụng phụ gì?") == [
         "Paracetamol"
     ]
-

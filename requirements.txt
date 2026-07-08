@@ -1,6 +1,10 @@
 fastapi
 uvicorn[standard]
 pydantic-settings
+passlib[bcrypt]
+bcrypt<5
+python-jose[cryptography]
+langgraph
 sqlalchemy
 qdrant-client
 sentence-transformers

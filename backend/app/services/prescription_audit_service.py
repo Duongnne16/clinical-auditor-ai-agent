@@ -5,6 +5,7 @@ from typing import Any, Callable, Iterable
 from backend.app.services.doctor_memory_service import (
     DOCTOR_MEMORY_LABEL,
 )
+from backend.app.core.config import get_settings
 from backend.app.services.doctor_report_text_safety import sanitize_doctor_report_text
 from backend.app.services.doctor_report_composer_service import (
     DoctorReportComposerService,
@@ -73,6 +74,8 @@ class PrescriptionAuditService:
             risk_analyzer_service_factory or RiskAnalyzerService
         )
         self.gemini_client_factory = gemini_client_factory or GeminiRiskAnalyzerClient
+        self.use_langgraph_audit = get_settings().use_langgraph_audit
+        self._graph_service: Any | None = None
 
     @staticmethod
     def _meaningful_context_value(value: Any) -> bool:
@@ -205,6 +208,40 @@ class PrescriptionAuditService:
         return self.risk_analyzer_service_factory()
 
     def audit_text(
+        self,
+        prescription_text: str,
+        doctor_id: str | None = None,
+        patient_context: dict[str, Any] | None = None,
+        use_gemini: bool = False,
+        query_types: list[str] | None = None,
+        top_k_per_type: int = 8,
+    ) -> dict[str, Any]:
+        if self.use_langgraph_audit:
+            if self._graph_service is None:
+                from backend.app.services.prescription_audit_graph import (
+                    PrescriptionAuditGraphService,
+                )
+
+                self._graph_service = PrescriptionAuditGraphService(self)
+            return self._graph_service.audit_text(
+                prescription_text=prescription_text,
+                doctor_id=doctor_id,
+                patient_context=patient_context,
+                use_gemini=use_gemini,
+                query_types=query_types,
+                top_k_per_type=top_k_per_type,
+            )
+
+        return self._audit_text_legacy(
+            prescription_text=prescription_text,
+            doctor_id=doctor_id,
+            patient_context=patient_context,
+            use_gemini=use_gemini,
+            query_types=query_types,
+            top_k_per_type=top_k_per_type,
+        )
+
+    def _audit_text_legacy(
         self,
         prescription_text: str,
         doctor_id: str | None = None,
@@ -385,4 +422,5 @@ class PrescriptionAuditService:
             "safety_layer_service": safety_stats,
             "doctor_memory_service": memory_stats,
             "gemini_supported": self.gemini_client_factory is not None,
+            "langgraph_audit_enabled": self.use_langgraph_audit,
         }

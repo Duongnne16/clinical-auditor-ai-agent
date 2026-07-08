@@ -367,3 +367,38 @@ def test_get_chat_query_service_is_cached() -> None:
         get_chat_query_service.cache_clear()
 
     assert service_1 is service_2
+
+
+def test_utf8_demo_chat_questions_render_expected_intents() -> None:
+    service = _service()
+
+    interaction = service.answer(
+        ChatRequest(message="Omeprazole có tương tác với Clopidogrel không?")
+    )
+    adverse_effect = service.answer(
+        ChatRequest(message="Paracetamol có tác dụng phụ gì?")
+    )
+    caution = service.answer(
+        ChatRequest(message="Levofloxacin dùng cần lưu ý gì?")
+    )
+    out_of_scope = service.answer(ChatRequest(message="Viết giúp tôi bài văn"))
+
+    assert interaction["intent"] == "drug_interaction_query"
+    assert interaction["answer"]
+    assert interaction["sources"]
+    assert interaction["normalized_drugs"][0]["raw_name"] == "Omeprazole"
+    assert interaction["normalized_drugs"][1]["raw_name"] == "Clopidogrel"
+
+    assert adverse_effect["intent"] == "single_drug_query"
+    assert adverse_effect["answer"]
+    assert adverse_effect["sources"]
+    assert adverse_effect["normalized_drugs"][0]["raw_name"] == "Paracetamol"
+
+    assert caution["intent"] == "single_drug_query"
+    assert caution["answer"]
+    assert caution["sources"]
+    assert caution["normalized_drugs"][0]["raw_name"] == "Levofloxacin"
+
+    assert out_of_scope["intent"] == "out_of_scope"
+    assert out_of_scope["answer"] == OUT_OF_SCOPE_REFUSAL
+    assert out_of_scope["sources"] == []

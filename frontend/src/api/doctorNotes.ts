@@ -1,7 +1,5 @@
+import { apiFetch } from './client'
 import type { DoctorMemoryNote, DoctorNoteCreatePayload } from '../types/doctorNote'
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'
 
 const extractErrorMessage = (payload: unknown): string | null => {
   if (!payload || typeof payload !== 'object') {
@@ -34,11 +32,8 @@ const extractErrorMessage = (payload: unknown): string | null => {
 export async function createDoctorNote(
   payload: DoctorNoteCreatePayload,
 ): Promise<DoctorMemoryNote> {
-  const response = await fetch(`${API_BASE_URL}/doctor-notes`, {
+  const response = await apiFetch('/doctor-notes', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify(payload),
   })
 
@@ -67,7 +62,7 @@ export async function searchDoctorNotes(
     q: query,
     top_k: String(topK),
   })
-  const response = await fetch(`${API_BASE_URL}/doctor-notes/search?${params}`)
+  const response = await apiFetch(`/doctor-notes/search?${params}`)
 
   if (!response.ok) {
     return []

@@ -325,6 +325,28 @@ def test_preserves_supported_renal_disease_case_from_diagnoses() -> None:
     assert result["overall_risk_level"] == "low"
 
 
+def test_removes_unsupported_renal_item_when_renal_function_is_normal() -> None:
+    result = SafetyLayerService().apply(
+        _risk_analysis(
+            [
+                _risk_item(
+                    severity="moderate",
+                    title="Thận trọng ở người suy thận",
+                    explanation="Bệnh nhân suy thận có nguy cơ tích lũy nhôm.",
+                )
+            ],
+            level="moderate",
+        ),
+        normalized_result={},
+        evidence_bundle=_bundle("chunk-1"),
+        patient_context={"renal_function": "Bình thường", "diagnoses": []},
+    )
+
+    assert result["risk_items"] == []
+    assert result["overall_risk_level"] == "unknown"
+    assert "safety_removed_renal_item_when_renal_function_normal" in result["warnings"]
+
+
 def test_no_evidence_sets_insufficient_evidence() -> None:
     risk_analysis = _risk_analysis([_risk_item()], level="high")
     risk_analysis["evidence_context"] = {"valid_evidence_refs": []}
@@ -402,6 +424,37 @@ def test_unknown_pregnancy_lactation_requires_confirmation_for_relevant_patient(
     assert "Cần xác nhận" in item["explanation"]
     assert "pregnancy_lactation" in result["missing_information"]
     assert "safety_pregnancy_lactation_requires_confirmation" in result["warnings"]
+
+
+def test_breastfeeding_context_is_not_treated_as_unknown() -> None:
+    result = SafetyLayerService().apply(
+        _risk_analysis(
+            [
+                _risk_item(
+                    risk_type="pregnancy_lactation",
+                    severity="high",
+                    title="Levofloxacin cần rà soát khi cho con bú",
+                    explanation="Evidence mentions lactation.",
+                    recommendation="Review clinically.",
+                )
+            ],
+            level="high",
+        ),
+        normalized_result={},
+        evidence_bundle=_bundle("chunk-1"),
+        patient_context={
+            "sex": "female",
+            "pregnancy_lactation": "Cho con bú",
+            "pregnancy_status": "unknown",
+        },
+    )
+
+    item = result["risk_items"][0]
+    assert item["severity"] == "high"
+    assert item["title"] == "Levofloxacin cần rà soát khi cho con bú"
+    assert "pregnancy_lactation" not in result["missing_information"]
+    assert "pregnancy_status" not in result["missing_information"]
+    assert "safety_pregnancy_lactation_requires_confirmation" not in result["warnings"]
 
 
 def test_pregnancy_lactation_missing_not_added_for_male_or_not_applicable() -> None:

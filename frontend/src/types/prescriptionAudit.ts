@@ -15,7 +15,6 @@ export type PatientContext = {
 
 export type PrescriptionAuditRequest = {
   prescription_text: string
-  doctor_id?: string | null
   patient_context: PatientContext
   use_gemini: boolean
   query_types: string[]

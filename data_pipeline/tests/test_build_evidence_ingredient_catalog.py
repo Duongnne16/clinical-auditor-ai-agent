@@ -5,6 +5,7 @@ import pytest
 
 from data_pipeline.processing.build_evidence_ingredient_catalog import (
     build_catalog,
+    build_catalog_from_paths,
     extract_chunk_identity,
     normalize_text,
     parse_slug_from_chunk_id,
@@ -34,6 +35,30 @@ def _chunk(
     if nested:
         return {"chunk_id": chunk_id, "content": "text", "metadata": values}
     return {"chunk_id": chunk_id, **values}
+
+
+def _longchau_chunk(
+    chunk_id: str = "longchau:ingredient:paracetamol:chi_dinh:0001",
+    *,
+    name: str = "Paracetamol",
+    slug: str = "paracetamol",
+    section: str = "chi_dinh",
+) -> dict:
+    return {
+        "chunk_id": chunk_id,
+        "content": "text",
+        "metadata": {
+            "source": "longchau",
+            "source_name": "Dược chất Long Châu",
+            "source_type": "supplementary",
+            "entity_type": "ingredient",
+            "entity_name": name,
+            "slug": slug,
+            "section": section,
+            "url": f"https://nhathuoclongchau.com.vn/thanh-phan/{slug}",
+            "language": "vi",
+        },
+    }
 
 
 def _write_jsonl(path: Path, rows: list[object | str]) -> None:
@@ -184,6 +209,87 @@ def test_chunk_id_slug_fallback_and_multiple_names_warning(
     assert report["warning_counts"]["multiple_entity_names_for_slug"] == 1
 
 
+def test_build_catalog_from_multiple_sources_tracks_source_counts(
+    tmp_path: Path,
+) -> None:
+    trungtamthuoc_path = tmp_path / "trungtamthuoc.jsonl"
+    longchau_path = tmp_path / "longchau.jsonl"
+    output_dir = tmp_path / "output"
+    _write_jsonl(
+        trungtamthuoc_path,
+        [_chunk("trungtamthuoc:ingredient:paracetamol:chi_dinh:0001")],
+    )
+    _write_jsonl(
+        longchau_path,
+        [
+            _longchau_chunk(section="tuong_tac_thuoc"),
+            _longchau_chunk(
+                "longchau:ingredient:omeprazole:tuong_tac_thuoc:0001",
+                name="Omeprazole",
+                slug="omeprazole",
+                section="tuong_tac_thuoc",
+            ),
+        ],
+    )
+
+    report = build_catalog_from_paths(
+        [trungtamthuoc_path, longchau_path], output_dir
+    )
+    records = {
+        item["slug"]: item
+        for item in (
+            json.loads(line)
+            for line in (output_dir / "evidence_ingredient_catalog.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
+    }
+
+    assert report["chunks_read"] == 3
+    assert report["source_counts_global"] == {
+        "longchau": 2,
+        "unknown": 1,
+    }
+    assert records["paracetamol"]["catalog_id"] == (
+        "evidence:ingredient:paracetamol"
+    )
+    assert records["paracetamol"]["source_counts"] == {
+        "longchau": 1,
+        "unknown": 1,
+    }
+    assert records["paracetamol"]["section_counts_by_source"]["longchau"] == {
+        "tuong_tac_thuoc": 1
+    }
+    assert records["omeprazole"]["source"] == "longchau"
+
+
+def test_section_like_entity_name_falls_back_to_slug(tmp_path: Path) -> None:
+    input_path = tmp_path / "chunks.jsonl"
+    output_dir = tmp_path / "output"
+    _write_jsonl(
+        input_path,
+        [
+            _chunk(
+                "trungtamthuoc:ingredient:nelfinavir-mesilate:duoc_luc_hoc:0001",
+                name="Dược lực học",
+                slug="nelfinavir-mesilate",
+                section="duoc_luc_hoc",
+            )
+        ],
+    )
+
+    report = build_catalog(input_path, output_dir)
+    record = json.loads(
+        (output_dir / "evidence_ingredient_catalog.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+
+    assert record["entity_name"] == "nelfinavir mesilate"
+    assert "entity_name_looks_like_section" in record["warnings"]
+    assert report["warning_counts"]["entity_name_looks_like_section"] == 1
+
+
 def test_invalid_json_non_strict_and_strict(tmp_path: Path) -> None:
     input_path = tmp_path / "chunks.jsonl"
     _write_jsonl(input_path, ["{bad json", _chunk("valid")])
@@ -220,4 +326,3 @@ def test_invalid_chunk_atomic_output_and_report_readback(
         .read_text(encoding="utf-8")
     )["unique_ingredients"] == 1
     assert not list(output_dir.glob("*.tmp"))
-

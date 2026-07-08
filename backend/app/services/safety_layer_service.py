@@ -115,6 +115,18 @@ UNKNOWN_PREGNANCY_VALUES = {
     "chua co thong tin",
     "chưa có thông tin",
 }
+NORMAL_RENAL_VALUES = {
+    "binh thuong",
+    "normal",
+    "no known renal impairment",
+    "khong ghi nhan",
+}
+NORMAL_HEPATIC_VALUES = {
+    "binh thuong",
+    "normal",
+    "no known hepatic impairment",
+    "khong ghi nhan",
+}
 NEGATIVE_PREGNANCY_VALUES = {
     "khong",
     "không",
@@ -227,6 +239,18 @@ class SafetyLayerService:
         return _contains_any(cls._diagnoses_text(patient_context), HEPATIC_DIAGNOSIS_TERMS)
 
     @staticmethod
+    def _has_normal_renal_function(patient_context: dict[str, Any] | None) -> bool:
+        if not isinstance(patient_context, dict):
+            return False
+        return _fold_text(patient_context.get("renal_function")) in NORMAL_RENAL_VALUES
+
+    @staticmethod
+    def _has_normal_hepatic_function(patient_context: dict[str, Any] | None) -> bool:
+        if not isinstance(patient_context, dict):
+            return False
+        return _fold_text(patient_context.get("hepatic_function")) in NORMAL_HEPATIC_VALUES
+
+    @staticmethod
     def _egfr_value(patient_context: dict[str, Any] | None) -> float | None:
         if not isinstance(patient_context, dict):
             return None
@@ -327,6 +351,9 @@ class SafetyLayerService:
                 patient_context
             ) or cls._is_metformin_egfr_contraindication(item, patient_context):
                 return item
+            if cls._has_normal_renal_function(patient_context):
+                warnings.append("safety_removed_renal_item_when_renal_function_normal")
+                return None
             if (
                 str(item.get("severity", "")).casefold() == "low"
                 and _contains_any(combined_text, MILD_RENAL_INFERENCE_TERMS)
@@ -339,6 +366,9 @@ class SafetyLayerService:
         if hepatic_claim:
             if cls._has_supported_hepatic_diagnosis(patient_context):
                 return item
+            if cls._has_normal_hepatic_function(patient_context):
+                warnings.append("safety_removed_hepatic_item_when_hepatic_function_normal")
+                return None
             cls._rewrite_diagnosis_wording(
                 item, HEPATIC_UNSUPPORTED_PHRASES, HEPATIC_UNCERTAINTY_TEXT
             )
@@ -395,6 +425,14 @@ class SafetyLayerService:
             _fold_text(patient_context.get("pregnancy_lactation")),
             _fold_text(patient_context.get("pregnancy_status")),
         ]
+        if any(
+            value
+            and value not in UNKNOWN_PREGNANCY_VALUES
+            and value not in NEGATIVE_PREGNANCY_VALUES
+            and value != "not_applicable"
+            for value in values
+        ):
+            return False
         return any(value in UNKNOWN_PREGNANCY_VALUES for value in values)
 
     @classmethod

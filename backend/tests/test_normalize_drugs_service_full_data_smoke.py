@@ -15,7 +15,7 @@ MAPPING_PATH = Path(
     "data/processed/longchau_mapping/drug_mapping.jsonl"
 )
 CATALOG_PATH = Path(
-    "data/processed/evidence_ingredients/evidence_ingredient_catalog.jsonl"
+    "data/processed/evidence_ingredients_v2/evidence_ingredient_catalog.jsonl"
 )
 
 
