@@ -23,6 +23,12 @@ INTERACTION_KEYWORDS = [
     "có ảnh hưởng không",
 ]
 
+SINGLE_DRUG_INTERACTION_LOOKUP_PATTERNS = [
+    r"\bco\s+nhung\s+tuong\s+tac\s+thuoc\s+nao\b",
+    r"\btuong\s+tac\s+voi\s+thuoc\s+nao\b",
+    r"\bco\s+tuong\s+tac\s+gi\b",
+]
+
 TOPIC_KEYWORDS: list[tuple[str, list[str]]] = [
     (
         "adverse_effect",
@@ -120,6 +126,10 @@ class IntentRouter:
             return False
         return _matches_any(message, OUT_OF_SCOPE_PATTERNS)
 
+    @staticmethod
+    def _is_single_drug_interaction_lookup(message: str) -> bool:
+        return _matches_any(message, SINGLE_DRUG_INTERACTION_LOOKUP_PATTERNS)
+
     def classify(self, message: str) -> IntentClassification:
         if self._is_clear_out_of_scope(message):
             return IntentClassification(
@@ -132,6 +142,16 @@ class IntentRouter:
         drug_mentions = self.extractor.extract(message)
 
         if _contains_any(message, INTERACTION_KEYWORDS):
+            if (
+                len(drug_mentions) == 1
+                and self._is_single_drug_interaction_lookup(message)
+            ):
+                return IntentClassification(
+                    intent=SINGLE_DRUG_QUERY,
+                    confidence=0.85,
+                    drug_mentions=drug_mentions,
+                    topic="interaction",
+                )
             warnings = []
             if len(drug_mentions) < 2:
                 warnings.append("interaction_query_requires_two_drugs")

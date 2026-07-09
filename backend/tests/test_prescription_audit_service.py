@@ -70,10 +70,30 @@ class FakeRiskAnalyzer:
         self.calls: list[dict[str, Any]] = []
 
     def analyze(self, **kwargs: Any) -> dict[str, Any]:
+        assert "doctor_memory" not in kwargs
+        assert "doctor_memory_notes" not in kwargs
+        analysis_context = kwargs.get("analysis_context")
+        if isinstance(analysis_context, dict):
+            assert "doctor_memory" not in analysis_context
+            assert "doctor_memory_notes" not in analysis_context
         self.calls.append(kwargs)
         if self.raises:
             raise RuntimeError("analysis failed")
         return self.result
+
+
+class EventRecordingRiskAnalyzer(FakeRiskAnalyzer):
+    def __init__(
+        self,
+        events: list[str],
+        result: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(result)
+        self.events = events
+
+    def analyze(self, **kwargs: Any) -> dict[str, Any]:
+        self.events.append("analyze")
+        return super().analyze(**kwargs)
 
 
 class FakeRiskAnalyzerFactory:
@@ -152,6 +172,21 @@ class FakeDoctorMemoryService:
         return {"service": "FakeDoctorMemoryService"}
 
 
+class EventRecordingDoctorMemoryService(FakeDoctorMemoryService):
+    def __init__(
+        self,
+        events: list[str],
+        result: dict[str, Any] | None = None,
+        raises: bool = False,
+    ) -> None:
+        super().__init__(result=result, raises=raises)
+        self.events = events
+
+    def retrieve_for_audit_context(self, **kwargs: Any) -> dict[str, Any]:
+        self.events.append("memory")
+        return super().retrieve_for_audit_context(**kwargs)
+
+
 class FakeContextAwareDoctorMemoryService(FakeDoctorMemoryService):
     def retrieve_for_audit_context(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(kwargs)
@@ -179,10 +214,11 @@ class FakeContextAwareDoctorMemoryService(FakeDoctorMemoryService):
 class FakeGeminiFactory:
     def __init__(self) -> None:
         self.calls = 0
+        self.client = object()
 
     def __call__(self) -> object:
         self.calls += 1
-        return object()
+        return self.client
 
 
 STRUCTURED_DOCUMENT = """ĐƠN NGOẠI TRÚ 1
@@ -229,12 +265,14 @@ def test_use_gemini_false_context_ready_returns_partial_success() -> None:
     analyzer_factory = FakeRiskAnalyzerFactory(analyzer)
     reporter = FakeReportGeneratorService(_report("report_context_ready"))
     safety = FakeSafetyLayerService()
+    gemini_factory = FakeGeminiFactory()
     service = PrescriptionAuditService(
         prescription_check_service=checker,
         report_generator_service=reporter,
         doctor_report_composer_service=FakeDoctorReportComposerService(),
         safety_layer_service=safety,
         risk_analyzer_service_factory=analyzer_factory,
+        gemini_client_factory=gemini_factory,
     )
 
     result = service.audit_text("1. Omeprazol 20mg", doctor_id="doctor-1")
@@ -243,7 +281,8 @@ def test_use_gemini_false_context_ready_returns_partial_success() -> None:
     assert result["prescription_check"]["status"] == "evidence_ready"
     assert result["risk_analysis"]["status"] == "analysis_context_ready"
     assert result["report"]["status"] == "report_context_ready"
-    assert analyzer_factory.calls == [{}]
+    assert gemini_factory.calls == 1
+    assert analyzer_factory.calls == [{"llm_client": gemini_factory.client}]
     assert checker.calls[0]["doctor_id"] == "doctor-1"
     assert safety.calls[0]["risk_analysis"]["status"] == "analysis_context_ready"
     assert reporter.calls[0]["risk_analysis"]["safety_marker"] is True
@@ -251,6 +290,23 @@ def test_use_gemini_false_context_ready_returns_partial_success() -> None:
     assert result["report"]["doctor_facing_response"].startswith(
         "Kết quả kiểm tra đơn thuốc"
     )
+
+
+def test_create_risk_analyzer_ignores_use_gemini_false_and_uses_gemini_client() -> None:
+    analyzer = FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
+    analyzer_factory = FakeRiskAnalyzerFactory(analyzer)
+    gemini_factory = FakeGeminiFactory()
+    service = PrescriptionAuditService(
+        risk_analyzer_service_factory=analyzer_factory,
+        gemini_client_factory=gemini_factory,
+    )
+
+    created = service._create_risk_analyzer(use_gemini=False)
+
+    assert created is analyzer
+    assert gemini_factory.calls == 1
+    assert analyzer_factory.calls == [{"llm_client": gemini_factory.client}]
+    assert {} not in analyzer_factory.calls
 
 
 def test_use_gemini_true_uses_gemini_factory_and_success() -> None:
@@ -271,7 +327,7 @@ def test_use_gemini_true_uses_gemini_factory_and_success() -> None:
 
     assert result["status"] == "success"
     assert gemini_factory.calls == 1
-    assert "llm_client" in analyzer_factory.calls[0]
+    assert analyzer_factory.calls == [{"llm_client": gemini_factory.client}]
 
 
 @pytest.mark.parametrize("status", ["invalid_input", "error"])
@@ -386,18 +442,22 @@ def test_prescription_check_exception_returns_failed() -> None:
 
 def test_analyzer_exception_flows_to_report_analysis_failed() -> None:
     reporter = FakeReportGeneratorService(_report("report_analysis_failed"))
+    gemini_factory = FakeGeminiFactory()
     service = PrescriptionAuditService(
         prescription_check_service=FakePrescriptionCheckService(),
         report_generator_service=reporter,
         safety_layer_service=FakeSafetyLayerService(),
         risk_analyzer_service_factory=FakeRiskAnalyzerFactory(FakeRiskAnalyzer(raises=True)),
+        gemini_client_factory=gemini_factory,
     )
 
     result = service.audit_text("1. Omeprazol 20mg")
 
     assert result["status"] == "partial_success"
     assert result["risk_analysis"]["status"] == "analysis_failed"
+    assert gemini_factory.calls == 1
     assert "risk_analysis_failed" in result["errors"]
+    assert "analysis_not_run_without_llm" not in result["warnings"]
     assert "safety_applied" in result["warnings"]
 
 
@@ -593,16 +653,26 @@ def test_audit_includes_matching_doctor_memory_section() -> None:
             ]
         }
     )
+    risk_result = _risk_analysis("analysis_ready") | {
+        "overall_risk_level": "high",
+        "risk_items": [
+            {
+                "risk_type": "interaction",
+                "severity": "high",
+                "title": "Levofloxacin + Sucralfate",
+            }
+        ],
+    }
+    analyzer = FakeRiskAnalyzer(risk_result)
+    checker = FakePrescriptionCheckService(
+        _prescription_check(normalized_result=normalized_result)
+    )
     service = PrescriptionAuditService(
-        prescription_check_service=FakePrescriptionCheckService(
-            _prescription_check(normalized_result=normalized_result)
-        ),
+        prescription_check_service=checker,
         report_generator_service=FakeReportGeneratorService(_report("report_ready")),
         doctor_report_composer_service=FakeDoctorReportComposerService(),
         safety_layer_service=FakeSafetyLayerService(),
-        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(
-            FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
-        ),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(analyzer),
         doctor_memory_service=memory,
     )
 
@@ -612,7 +682,16 @@ def test_audit_includes_matching_doctor_memory_section() -> None:
     assert result["report"]["doctor_memory"] == result["doctor_memory"]
     assert "Ghi chú riêng của bác sĩ" in result["report"]["doctor_facing_response"]
     assert "Rà soát thời điểm dùng" in result["report"]["doctor_facing_response"]
+    assert result["risk_analysis"]["overall_risk_level"] == "high"
+    assert analyzer.calls[0] == {
+        "normalized_result": normalized_result,
+        "evidence_bundle": checker.result["evidence_bundle"],
+        "patient_context": {},
+    }
     assert memory.calls[0]["doctor_id"] == "doctor-1"
+    assert memory.calls[0]["normalized_result"] == normalized_result
+    assert memory.calls[0]["patient_context"] == {}
+    assert memory.calls[0]["risk_analysis"] is None
     assert "evidence_sources" not in result["report"] or not any(
         "Rà soát thời điểm dùng" in str(source)
         for source in result["report"].get("evidence_sources", [])
@@ -643,13 +722,14 @@ def test_audit_no_memory_does_not_alter_doctor_facing_response() -> None:
 
 
 def test_audit_memory_failure_does_not_fail_audit() -> None:
+    risk_result = _risk_analysis("analysis_ready") | {"overall_risk_level": "high"}
     service = PrescriptionAuditService(
         prescription_check_service=FakePrescriptionCheckService(),
         report_generator_service=FakeReportGeneratorService(_report("report_ready")),
         doctor_report_composer_service=FakeDoctorReportComposerService(),
         safety_layer_service=FakeSafetyLayerService(),
         risk_analyzer_service_factory=FakeRiskAnalyzerFactory(
-            FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
+            FakeRiskAnalyzer(risk_result)
         ),
         doctor_memory_service=FakeDoctorMemoryService(raises=True),
     )
@@ -657,6 +737,7 @@ def test_audit_memory_failure_does_not_fail_audit() -> None:
     result = service.audit_text("1. Omeprazol 20mg", doctor_id="doctor-1")
 
     assert result["status"] == "success"
+    assert result["risk_analysis"]["overall_risk_level"] == "high"
     assert result["doctor_memory"] == {"matched_notes": []}
     assert "doctor_memory_retrieval_failed" in result["warnings"]
 
@@ -701,7 +782,7 @@ def test_doctor_memory_notes_are_sanitized_and_not_evidence_sources() -> None:
     assert "Private note" not in result["report"]["markdown_report"]
 
 
-def test_graph_analysis_context_separates_evidence_and_doctor_memory() -> None:
+def test_graph_analysis_context_excludes_doctor_memory() -> None:
     evidence = {"unique_chunks": [{"chunk_id": "c1", "text": "Medical evidence"}]}
     memory = {"matched_notes": [{"note_id": "n1", "note_text": "Private note"}]}
 
@@ -711,15 +792,35 @@ def test_graph_analysis_context_separates_evidence_and_doctor_memory() -> None:
     )
 
     assert context["medical_evidence"] == evidence["unique_chunks"]
-    assert context["doctor_memory_notes"] == memory["matched_notes"]
-    assert context["context_rules"] == {
-        "medical_evidence_priority": "authoritative",
-        "doctor_memory_role": "private_context_only",
-    }
+    assert "doctor_memory" not in context
+    assert "doctor_memory_notes" not in context
+    assert context["context_rules"] == {"medical_evidence_priority": "authoritative"}
+
+
+def test_graph_retrieves_doctor_memory_after_risk_analysis() -> None:
+    events: list[str] = []
+    analyzer = EventRecordingRiskAnalyzer(events, _risk_analysis("analysis_ready"))
+    memory = EventRecordingDoctorMemoryService(events)
+    service = PrescriptionAuditService(
+        prescription_check_service=FakePrescriptionCheckService(),
+        report_generator_service=FakeReportGeneratorService(_report("report_ready")),
+        doctor_report_composer_service=FakeDoctorReportComposerService(),
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(analyzer),
+        doctor_memory_service=memory,
+    )
+    service.use_langgraph_audit = True
+
+    result = service.audit_text("1. Omeprazol 20mg", doctor_id="doctor-1")
+
+    assert result["status"] == "success"
+    assert events == ["analyze", "memory"]
+    assert memory.calls[0]["risk_analysis"] is None
 
 
 def test_feature_flag_off_uses_legacy_audit_path() -> None:
     checker = FakePrescriptionCheckService()
+    memory = FakeDoctorMemoryService()
     service = PrescriptionAuditService(
         prescription_check_service=checker,
         report_generator_service=FakeReportGeneratorService(_report("report_ready")),
@@ -728,14 +829,17 @@ def test_feature_flag_off_uses_legacy_audit_path() -> None:
         risk_analyzer_service_factory=FakeRiskAnalyzerFactory(
             FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
         ),
+        doctor_memory_service=memory,
     )
     service.use_langgraph_audit = False
 
-    result = service.audit_text("1. Omeprazol 20mg")
+    result = service.audit_text("1. Omeprazol 20mg", doctor_id="doctor-1")
 
     assert result["status"] == "success"
     assert service._graph_service is None
     assert checker.calls
+    assert memory.calls[0]["doctor_id"] == "doctor-1"
+    assert memory.calls[0]["risk_analysis"] is None
 
 
 def test_graph_related_levofloxacin_sucralfate_returns_memory_note() -> None:

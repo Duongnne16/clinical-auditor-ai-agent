@@ -7,7 +7,6 @@ from langgraph.graph import END, StateGraph
 
 ANALYSIS_CONTEXT_RULES = {
     "medical_evidence_priority": "authoritative",
-    "doctor_memory_role": "private_context_only",
 }
 
 
@@ -24,7 +23,6 @@ class PrescriptionAuditState(TypedDict, total=False):
     medical_evidence_bundle: dict[str, Any] | None
     doctor_memory: dict[str, Any]
     memory_warnings: list[str]
-    analysis_context: dict[str, Any]
     risk_analysis: dict[str, Any] | None
     report: dict[str, Any] | None
     final_response: dict[str, Any] | None
@@ -43,9 +41,8 @@ class PrescriptionAuditGraphService:
         graph.add_node("parse_prescription", self._parse_prescription)
         graph.add_node("normalize_drugs", self._normalize_drugs)
         graph.add_node("retrieve_medical_evidence", self._retrieve_medical_evidence)
-        graph.add_node("retrieve_doctor_memory", self._retrieve_doctor_memory)
-        graph.add_node("build_analysis_context", self._build_analysis_context_node)
         graph.add_node("analyze_risks", self._analyze_risks)
+        graph.add_node("retrieve_doctor_memory", self._retrieve_doctor_memory)
         graph.add_node("compose_report", self._compose_report)
         graph.add_node("safety_check", self._safety_check)
         graph.add_node("return_response", self._return_response)
@@ -54,10 +51,9 @@ class PrescriptionAuditGraphService:
         graph.add_edge("validate_request", "parse_prescription")
         graph.add_edge("parse_prescription", "normalize_drugs")
         graph.add_edge("normalize_drugs", "retrieve_medical_evidence")
-        graph.add_edge("retrieve_medical_evidence", "retrieve_doctor_memory")
-        graph.add_edge("retrieve_doctor_memory", "build_analysis_context")
-        graph.add_edge("build_analysis_context", "analyze_risks")
-        graph.add_edge("analyze_risks", "compose_report")
+        graph.add_edge("retrieve_medical_evidence", "analyze_risks")
+        graph.add_edge("analyze_risks", "retrieve_doctor_memory")
+        graph.add_edge("retrieve_doctor_memory", "compose_report")
         graph.add_edge("compose_report", "safety_check")
         graph.add_edge("safety_check", "return_response")
         graph.add_edge("return_response", END)
@@ -100,7 +96,7 @@ class PrescriptionAuditGraphService:
     def build_analysis_context(
         *,
         medical_evidence_bundle: dict[str, Any] | None,
-        doctor_memory: dict[str, Any] | None,
+        doctor_memory: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         medical_evidence: list[Any] = []
         if isinstance(medical_evidence_bundle, dict):
@@ -111,15 +107,8 @@ class PrescriptionAuditGraphService:
             elif isinstance(all_chunks, list):
                 medical_evidence = all_chunks
 
-        notes: list[Any] = []
-        if isinstance(doctor_memory, dict) and isinstance(
-            doctor_memory.get("matched_notes"), list
-        ):
-            notes = doctor_memory["matched_notes"]
-
         return {
             "medical_evidence": medical_evidence,
-            "doctor_memory_notes": notes,
             "context_rules": dict(ANALYSIS_CONTEXT_RULES),
         }
 
@@ -268,18 +257,6 @@ class PrescriptionAuditGraphService:
         return {
             "doctor_memory": doctor_memory,
             "memory_warnings": memory_warnings,
-        }
-
-    def _build_analysis_context_node(
-        self, state: PrescriptionAuditState
-    ) -> dict[str, Any]:
-        if self._has_final_response(state):
-            return {}
-        return {
-            "analysis_context": self.build_analysis_context(
-                medical_evidence_bundle=state.get("medical_evidence_bundle"),
-                doctor_memory=state.get("doctor_memory"),
-            )
         }
 
     def _analyze_risks(

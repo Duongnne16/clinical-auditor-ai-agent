@@ -180,7 +180,7 @@ class PrescriptionAuditService:
         doctor_id: str | None,
         normalized_result: dict[str, Any],
         patient_context: dict[str, Any],
-        risk_analysis: dict[str, Any],
+        risk_analysis: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], list[str]]:
         if self.doctor_memory_service is None:
             return _empty_doctor_memory(), []
@@ -189,7 +189,7 @@ class PrescriptionAuditService:
                 doctor_id=doctor_id,
                 normalized_result=normalized_result,
                 patient_context=patient_context,
-                risk_analysis=risk_analysis,
+                risk_analysis=None,
                 max_notes=3,
             )
         except Exception:
@@ -201,11 +201,14 @@ class PrescriptionAuditService:
             return _empty_doctor_memory(), []
         return {"matched_notes": notes[:3]}, []
 
-    def _create_risk_analyzer(self, use_gemini: bool) -> Any:
-        if use_gemini:
-            gemini_client = self.gemini_client_factory()
-            return self.risk_analyzer_service_factory(llm_client=gemini_client)
-        return self.risk_analyzer_service_factory()
+    def _create_risk_analyzer(self, use_gemini: bool | None = None) -> Any:
+        """Create Gemini-backed risk analyzer.
+
+        ``use_gemini`` is kept for request/API backward compatibility.
+        Prescription audit always uses Gemini risk analysis.
+        """
+        gemini_client = self.gemini_client_factory()
+        return self.risk_analyzer_service_factory(llm_client=gemini_client)
 
     def audit_text(
         self,
@@ -374,7 +377,6 @@ class PrescriptionAuditService:
             doctor_id=doctor_id,
             normalized_result=normalized_result,
             patient_context=context,
-            risk_analysis=risk_analysis,
         )
         report = self._attach_doctor_memory_to_report(report, doctor_memory)
 

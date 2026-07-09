@@ -48,6 +48,7 @@ TOPIC_QUERY_TYPES = {
     "pregnancy_lactation": "pregnancy_lactation",
     "renal": "renal_hepatic",
     "hepatic": "renal_hepatic",
+    "interaction": "interaction",
     "general": "general",
 }
 
@@ -59,6 +60,7 @@ TOPIC_LABELS = {
     "pregnancy_lactation": "thai kỳ/cho con bú",
     "renal": "chức năng thận",
     "hepatic": "chức năng gan",
+    "interaction": "tương tác thuốc",
     "general": "thông tin thuốc",
 }
 
@@ -70,6 +72,7 @@ SINGLE_QUERY_TEXT = {
     "pregnancy_lactation": "{drug} thai kỳ cho con bú",
     "renal": "{drug} suy thận chức năng thận",
     "hepatic": "{drug} suy gan chức năng gan",
+    "interaction": "{drug} tương tác thuốc",
     "general": "{drug} thông tin thuốc",
 }
 

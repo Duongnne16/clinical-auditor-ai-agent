@@ -48,6 +48,12 @@ EXPECTED_PRESCRIPTION_TEXT = """1. Omeprazole (Losec) 20mg x 15 viên
    Ngày uống 1 viên"""
 
 
+def _contains_text(value: object, expected: str) -> bool:
+    if isinstance(value, list):
+        return any(expected in str(item) for item in value)
+    return expected in str(value)
+
+
 def test_parses_canonical_outpatient_prescription() -> None:
     result = PrescriptionDocumentParser().parse(CANONICAL_DOCUMENT)
 
@@ -245,3 +251,78 @@ Bác sĩ khám bệnh
     assert result["warnings"] == [
         "prescription_document_parser_no_medication_lines"
     ]
+
+
+def test_parse_utf8_demo_outpatient_prescription_structured_context_and_medications() -> None:
+    text = """Hãy kiểm tra đơn thuốc này cho tôi
+ĐƠN NGOẠI TRÚ 3
+Bệnh viện: Bệnh viện B
+Khoa: Tim mạch 
+I. THÔNG TIN BỆNH NHÂN
+•	Họ và tên: Nguyễn Văn A
+•	Tuổi: 84
+•	Nam/Nữ: Nam
+•	Cân nặng: 80kg
+•	Địa chỉ: Quận Cầu Giấy, Hà Nội
+II. THÔNG TIN LÂM SÀNG
+•	Chẩn đoán: Bệnh cơ tim do thiếu máu cục bộ
+•	Dị ứng thuốc: Không
+•	Bệnh nền: Gút (thống phong), Trào ngược dạ dày – thực quản
+•	Chức năng gan: Bình thường
+•	Thai kỳ/ cho con bú: Không
+•	Thuốc khác đang dùng: Không
+III. CHỈ ĐỊNH DÙNG THUỐC
+1.	Allopurinol (Angut) 300mg x 51 viên
+Ngày uống 1 lần, mỗi lần 1 viên.
+2.	Alfuzosin (Gourcuff) 5mg x 51 viên
+Ngày uống 1 lần, mỗi lần 1 viên vào buổi sáng.
+3.	Amlodipin (AMLODAC) 5mg x 51 viên
+Ngày uống 1 lần, mỗi lần 1 viên, 18 giờ.
+4.	Acetylsalicylic acid (Aspirin Stella) 81mg x 51 viên
+Ngày uống 1 lần, mỗi lần 1 viên, sau ăn tối.
+5.	Bisoprolol (Concor) 2,5mg x 51 viên
+Ngày uống 1 lần, mỗi lần 1 viên, 8 giờ.
+6.	Losartan (Nerazzu) 50mg x 51 viên
+Ngày uống 1 lần, mỗi lần 1 viên, 8 giờ.
+7.	Rosuvastatin (Rotinvast) 20mg x 51 viên
+Ngày uống 1 lần, mỗi lần 1 viên, 18 giờ, sau ăn tối no.
+
+Ngày , tháng, năm
+Bác sĩ khám bệnh
+"""
+
+    result = PrescriptionDocumentParser().parse(text)
+
+    assert result["applied"] is True
+
+    patient_context = result["patient_context"]
+    assert patient_context["hospital"] == "Bệnh viện B"
+    assert patient_context["department"] == "Tim mạch"
+    assert patient_context["patient_name"] == "Nguyễn Văn A"
+    assert patient_context["age"] == 84
+    assert patient_context["sex"] == "male"
+    assert patient_context["weight"] == "80kg"
+    assert patient_context["hepatic_function"] == "Bình thường"
+    assert _contains_text(
+        patient_context["diagnoses"],
+        "Bệnh cơ tim do thiếu máu cục bộ",
+    )
+    assert _contains_text(patient_context["comorbidities"], "Gút")
+    assert _contains_text(
+        patient_context["comorbidities"],
+        "Trào ngược dạ dày",
+    )
+
+    prescription_text = result["prescription_text"]
+    for index in range(1, 8):
+        assert f"{index}." in prescription_text
+    assert "Allopurinol" in prescription_text
+    assert "Alfuzosin" in prescription_text
+    assert "Amlodipin" in prescription_text
+    assert "Acetylsalicylic acid" in prescription_text
+    assert "Bisoprolol" in prescription_text
+    assert "Losartan" in prescription_text
+    assert "Rosuvastatin" in prescription_text
+    assert "Hãy kiểm tra đơn thuốc này cho tôi" not in prescription_text
+    assert "Bác sĩ khám bệnh" not in prescription_text
+    assert "Ngày , tháng, năm" not in prescription_text

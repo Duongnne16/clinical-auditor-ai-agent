@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -5,11 +7,47 @@ from backend.app.core.config import get_settings
 from backend.app.core.security import TokenDecodeError, decode_access_token
 from backend.app.db.models import User
 from backend.app.db.session import get_db
+from backend.app.services.clinical_workflow_graph import ClinicalWorkflowGraphService
+from backend.app.services.chat_query_service import ChatQueryService
+from backend.app.services.doctor_memory_service import get_doctor_memory_service
+from backend.app.services.prescription_audit_service import PrescriptionAuditService
 
 
 def get_doctor_id() -> str:
     """Legacy development fallback; protected routes must use JWT dependencies."""
     return get_settings().fake_doctor_id
+
+
+@lru_cache
+def get_chat_query_service() -> ChatQueryService:
+    return ChatQueryService()
+
+
+@lru_cache
+def get_prescription_audit_service() -> PrescriptionAuditService:
+    return PrescriptionAuditService(doctor_memory_service=get_doctor_memory_service())
+
+
+def build_clinical_workflow_graph_service(
+    chat_query_service: ChatQueryService,
+) -> ClinicalWorkflowGraphService:
+    return ClinicalWorkflowGraphService(chat_query_service=chat_query_service)
+
+
+def get_clinical_workflow_graph_service(
+    chat_query_service: ChatQueryService = Depends(get_chat_query_service),
+) -> ClinicalWorkflowGraphService:
+    return build_clinical_workflow_graph_service(chat_query_service)
+
+
+def get_prescription_workflow_graph_service(
+    prescription_audit_service: PrescriptionAuditService = Depends(
+        get_prescription_audit_service
+    ),
+) -> ClinicalWorkflowGraphService:
+    return ClinicalWorkflowGraphService(
+        prescription_audit_service=prescription_audit_service
+    )
 
 
 def _auth_error() -> HTTPException:

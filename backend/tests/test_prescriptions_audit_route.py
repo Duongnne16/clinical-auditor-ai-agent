@@ -11,17 +11,29 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.api.routes.prescriptions import get_prescription_audit_service
+from backend.app.core.dependencies import get_prescription_workflow_graph_service
 from backend.app.core.security import create_access_token, hash_password
 from backend.app.db.models import Base, PrescriptionHistory, ReportHistory, User
 from backend.app.db.session import get_db
 from backend.app.main import app
 
 
-class FakePrescriptionAuditService:
+class FakePrescriptionWorkflowGraphService:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.states: list[dict[str, Any]] = []
 
-    def audit_text(self, **kwargs: Any) -> dict[str, Any]:
+    def run(self, state: dict[str, Any]) -> dict[str, Any]:
+        self.states.append(state)
+        request = state["prescription_request"]
+        kwargs = {
+            "prescription_text": request.prescription_text,
+            "doctor_id": state["doctor_id"],
+            "patient_context": request.patient_context,
+            "use_gemini": request.use_gemini,
+            "query_types": request.query_types,
+            "top_k_per_type": request.top_k_per_type,
+        }
         self.calls.append(kwargs)
         return {
             "status": "partial_success",
@@ -35,12 +47,14 @@ class FakePrescriptionAuditService:
         }
 
 
-def _override_service(fake_service: FakePrescriptionAuditService) -> None:
-    app.dependency_overrides[get_prescription_audit_service] = lambda: fake_service
+def _override_service(fake_service: FakePrescriptionWorkflowGraphService) -> None:
+    app.dependency_overrides[get_prescription_workflow_graph_service] = (
+        lambda: fake_service
+    )
 
 
 def _clear_overrides() -> None:
-    app.dependency_overrides.pop(get_prescription_audit_service, None)
+    app.dependency_overrides.pop(get_prescription_workflow_graph_service, None)
 
 
 @pytest.fixture()
@@ -66,7 +80,7 @@ def prescription_client(tmp_path: Path) -> Generator[TestClient, None, None]:
         yield client
     finally:
         app.dependency_overrides.pop(get_db, None)
-        app.dependency_overrides.pop(get_prescription_audit_service, None)
+        app.dependency_overrides.pop(get_prescription_workflow_graph_service, None)
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
 
@@ -164,7 +178,7 @@ def test_prescription_audit_service_dependency_is_cached() -> None:
 def test_prescription_audit_without_token_returns_401(
     prescription_client: TestClient,
 ) -> None:
-    fake_service = FakePrescriptionAuditService()
+    fake_service = FakePrescriptionWorkflowGraphService()
     _override_service(fake_service)
 
     response = prescription_client.post(
@@ -174,13 +188,14 @@ def test_prescription_audit_without_token_returns_401(
 
     assert response.status_code == 401
     assert fake_service.calls == []
+    assert fake_service.states == []
 
 
 def test_prescription_audit_route_returns_fake_service_response_with_token(
     prescription_client: TestClient,
 ) -> None:
     user = _create_user(prescription_client, doctor_id="doctor-from-token")
-    fake_service = FakePrescriptionAuditService()
+    fake_service = FakePrescriptionWorkflowGraphService()
     _override_service(fake_service)
 
     response = prescription_client.post(
@@ -219,6 +234,13 @@ def test_prescription_audit_route_returns_fake_service_response_with_token(
             "top_k_per_type": 3,
         }
     ]
+    assert len(fake_service.states) == 1
+    state = fake_service.states[0]
+    assert state["request_type"] == "prescription_audit"
+    assert state["prescription_request"].prescription_text == "1. Omeprazol 20mg"
+    assert state["input_text"] == "1. Omeprazol 20mg"
+    assert state["doctor_id"] == "doctor-from-token"
+    assert state["trace"] == []
 
 
 def test_prescription_audit_with_token_saves_history_and_report(
@@ -229,7 +251,7 @@ def test_prescription_audit_with_token_saves_history_and_report(
         doctor_id="doctor-history",
         email="history@example.test",
     )
-    fake_service = FakePrescriptionAuditService()
+    fake_service = FakePrescriptionWorkflowGraphService()
     _override_service(fake_service)
 
     response = prescription_client.post(
@@ -273,7 +295,7 @@ def test_prescription_audit_returns_original_response_when_history_save_fails(
         doctor_id="doctor-history-failure",
         email="history-failure@example.test",
     )
-    fake_service = FakePrescriptionAuditService()
+    fake_service = FakePrescriptionWorkflowGraphService()
     _override_service(fake_service)
 
     def fail_commit(self: Session) -> None:
@@ -301,7 +323,7 @@ def test_prescription_audit_route_uses_token_doctor_when_body_missing(
         doctor_id="doctor-token-missing-body",
         email="missing-body@example.test",
     )
-    fake_service = FakePrescriptionAuditService()
+    fake_service = FakePrescriptionWorkflowGraphService()
     _override_service(fake_service)
 
     response = prescription_client.post(
@@ -325,7 +347,7 @@ def test_prescription_audit_route_passes_use_gemini_true_to_fake_service(
         doctor_id="doctor-gemini",
         email="gemini@example.test",
     )
-    fake_service = FakePrescriptionAuditService()
+    fake_service = FakePrescriptionWorkflowGraphService()
     _override_service(fake_service)
 
     response = prescription_client.post(
@@ -349,7 +371,7 @@ def test_prescription_text_empty_returns_422(
         doctor_id="doctor-validation-empty",
         email="validation-empty@example.test",
     )
-    fake_service = FakePrescriptionAuditService()
+    fake_service = FakePrescriptionWorkflowGraphService()
     _override_service(fake_service)
 
     response = prescription_client.post(
@@ -360,6 +382,7 @@ def test_prescription_text_empty_returns_422(
 
     assert response.status_code == 422
     assert fake_service.calls == []
+    assert fake_service.states == []
 
 
 def test_prescription_history_without_token_returns_401(
@@ -474,7 +497,7 @@ def test_prescription_text_whitespace_only_returns_422(
         doctor_id="doctor-validation-whitespace",
         email="validation-whitespace@example.test",
     )
-    fake_service = FakePrescriptionAuditService()
+    fake_service = FakePrescriptionWorkflowGraphService()
     _override_service(fake_service)
 
     response = prescription_client.post(
@@ -485,6 +508,7 @@ def test_prescription_text_whitespace_only_returns_422(
 
     assert response.status_code == 422
     assert fake_service.calls == []
+    assert fake_service.states == []
 
 
 def test_top_k_per_type_zero_returns_422(
@@ -495,7 +519,7 @@ def test_top_k_per_type_zero_returns_422(
         doctor_id="doctor-validation-top-k",
         email="validation-top-k@example.test",
     )
-    fake_service = FakePrescriptionAuditService()
+    fake_service = FakePrescriptionWorkflowGraphService()
     _override_service(fake_service)
 
     response = prescription_client.post(
@@ -509,3 +533,4 @@ def test_top_k_per_type_zero_returns_422(
 
     assert response.status_code == 422
     assert fake_service.calls == []
+    assert fake_service.states == []

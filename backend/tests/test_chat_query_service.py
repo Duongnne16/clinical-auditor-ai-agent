@@ -138,6 +138,27 @@ def test_interaction_query_normalizes_retrieves_and_answers() -> None:
     assert "chunk_id" not in result["sources"][0]
 
 
+def test_interaction_query_ignores_generic_nhau_mention() -> None:
+    normalizer = FakeNormalizer()
+    retriever = FakeRetriever()
+    result = _service(normalizer, retriever).answer(
+        ChatRequest(message="Amlodipin và Alfuzosin có tương tác với nhau không?")
+    )
+
+    assert result["intent"] == "drug_interaction_query"
+    assert normalizer.calls == [
+        {"medications": ["Amlodipin", "Alfuzosin"], "top_k": 5}
+    ]
+    assert [drug["raw_name"] for drug in result["normalized_drugs"]] == [
+        "Amlodipin",
+        "Alfuzosin",
+    ]
+    assert "nhau" not in [
+        str(drug.get("raw_name", "")).casefold()
+        for drug in result["normalized_drugs"]
+    ]
+
+
 def test_single_drug_query_uses_topic_query_type() -> None:
     normalizer = FakeNormalizer()
     retriever = FakeRetriever()
@@ -154,6 +175,25 @@ def test_single_drug_query_uses_topic_query_type() -> None:
     assert "Paracetamol tác dụng không mong muốn tác dụng phụ" == retriever.calls[0][
         "query_text"
     ]
+
+
+def test_single_drug_interaction_lookup_uses_interaction_query_type() -> None:
+    for message in [
+        "Paracetamol có những tương tác thuốc nào?",
+        "Paracetamol tương tác với thuốc nào?",
+    ]:
+        normalizer = FakeNormalizer()
+        retriever = FakeRetriever()
+        result = _service(normalizer, retriever).answer(ChatRequest(message=message))
+
+        assert result["intent"] == "single_drug_query"
+        assert normalizer.calls == [
+            {"medications": ["Paracetamol"], "top_k": 5}
+        ]
+        assert retriever.calls[0]["query_type"] == "interaction"
+        assert retriever.calls[0]["query_text"] == "Paracetamol tương tác thuốc"
+        assert "interaction_query_requires_two_drugs" not in result["warnings"]
+        assert "missing_interaction_drug_mentions" not in result["warnings"]
 
 
 def test_missing_drug_mentions_return_warning_answer() -> None:

@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from backend.app.api.routes.chat import get_chat_query_service
+from backend.app.core.dependencies import get_clinical_workflow_graph_service
 from backend.app.core.security import create_access_token, hash_password
 from backend.app.db.models import Base, User
 from backend.app.db.session import get_db
@@ -17,12 +17,13 @@ from backend.app.main import app
 from backend.app.services.doctor_memory_service import get_doctor_memory_service
 
 
-class FakeChatQueryService:
+class FakeClinicalWorkflowGraphService:
     def __init__(self) -> None:
-        self.calls: list[Any] = []
+        self.calls: list[dict[str, Any]] = []
 
-    def answer(self, request: Any) -> dict[str, Any]:
-        self.calls.append(request)
+    def run(self, state: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append(state)
+        request = state["chat_request"]
         intent = request.intent or "single_drug_query"
         answer = (
             "Với dữ liệu hiện có, hệ thống ghi nhận thông tin cần rà soát."
@@ -81,22 +82,29 @@ def placeholder_client(tmp_path: Path) -> Generator[TestClient, None, None]:
         yield client
     finally:
         app.dependency_overrides.pop(get_db, None)
-        app.dependency_overrides.pop(get_chat_query_service, None)
+        app.dependency_overrides.pop(get_clinical_workflow_graph_service, None)
         app.dependency_overrides.pop(get_doctor_memory_service, None)
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
 
 
-def _override_chat_service(
-    fake: FakeChatQueryService | None = None,
-) -> FakeChatQueryService:
-    service = fake or FakeChatQueryService()
-    app.dependency_overrides[get_chat_query_service] = lambda: service
+def _override_graph_service(
+    fake: FakeClinicalWorkflowGraphService | None = None,
+) -> FakeClinicalWorkflowGraphService:
+    service = fake or FakeClinicalWorkflowGraphService()
+    app.dependency_overrides[get_clinical_workflow_graph_service] = lambda: service
     return service
 
 
 def _override_memory_service() -> None:
     app.dependency_overrides[get_doctor_memory_service] = FakeDoctorMemoryService
+
+
+def _override_failing_memory_service() -> None:
+    def fail() -> None:
+        raise AssertionError("Doctor Memory must not be used by /chat")
+
+    app.dependency_overrides[get_doctor_memory_service] = fail
 
 
 def _create_user(
@@ -132,7 +140,7 @@ def _auth_headers(user: User) -> dict[str, str]:
 def test_chat_route_without_token_returns_401(
     placeholder_client: TestClient,
 ) -> None:
-    _override_chat_service()
+    _override_graph_service()
 
     response = placeholder_client.post(
         "/api/v1/chat",
@@ -146,7 +154,8 @@ def test_chat_route_returns_backward_compatible_answer_fields_with_jwt(
     placeholder_client: TestClient,
 ) -> None:
     user = _create_user(placeholder_client, doctor_id="doctor-chat-token")
-    fake = _override_chat_service()
+    fake = _override_graph_service()
+    _override_failing_memory_service()
 
     response = placeholder_client.post(
         "/api/v1/chat",
@@ -156,6 +165,16 @@ def test_chat_route_returns_backward_compatible_answer_fields_with_jwt(
 
     assert response.status_code == 200
     body = response.json()
+    assert {
+        "doctor_id",
+        "message",
+        "answer",
+        "intent",
+        "normalized_drugs",
+        "sources",
+        "warnings",
+        "disclaimer",
+    }.issubset(body)
     assert body["doctor_id"] == "doctor-chat-token"
     assert body["doctor_id"] != "dev-doctor-001"
     assert body["intent"] == "single_drug_query"
@@ -164,6 +183,11 @@ def test_chat_route_returns_backward_compatible_answer_fields_with_jwt(
     assert "Placeholder" not in body["disclaimer"]
     assert "không thay thế quyết định của bác sĩ/dược sĩ" in body["disclaimer"]
     assert len(fake.calls) == 1
+    assert fake.calls[0]["request_type"] == "chat"
+    assert fake.calls[0]["input_text"] == fake.calls[0]["chat_request"].message
+    assert fake.calls[0]["doctor_id"] == "doctor-chat-token"
+    assert fake.calls[0]["trace"] == []
+    assert "doctor_memory" not in fake.calls[0]
 
 
 def test_chat_route_can_return_out_of_scope_refusal_with_jwt(
@@ -174,7 +198,7 @@ def test_chat_route_can_return_out_of_scope_refusal_with_jwt(
         doctor_id="doctor-out-of-scope",
         email="scope@example.test",
     )
-    _override_chat_service()
+    fake = _override_graph_service()
 
     response = placeholder_client.post(
         "/api/v1/chat",
@@ -185,6 +209,7 @@ def test_chat_route_can_return_out_of_scope_refusal_with_jwt(
     assert response.status_code == 200
     assert response.json()["intent"] == "out_of_scope"
     assert "chỉ hỗ trợ tra cứu" in response.json()["answer"]
+    assert len(fake.calls) == 1
 
 
 def test_chat_route_can_return_interaction_answer_with_jwt(
@@ -195,7 +220,7 @@ def test_chat_route_can_return_interaction_answer_with_jwt(
         doctor_id="doctor-interaction",
         email="interaction@example.test",
     )
-    _override_chat_service()
+    fake = _override_graph_service()
 
     response = placeholder_client.post(
         "/api/v1/chat",
@@ -210,6 +235,7 @@ def test_chat_route_can_return_interaction_answer_with_jwt(
     assert body["doctor_id"] == "doctor-interaction"
     assert body["intent"] == "drug_interaction_query"
     assert body["answer"]
+    assert len(fake.calls) == 1
 
 
 def test_doctor_notes_require_jwt_after_auth_migration(
