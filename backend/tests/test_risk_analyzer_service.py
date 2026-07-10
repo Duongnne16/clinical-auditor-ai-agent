@@ -15,6 +15,7 @@ def _normalized_result() -> dict[str, Any]:
                 "raw_line": "1. Omeprazol (Kagascdine) 20mg",
                 "generic_text": "Omeprazol",
                 "brand_text": "Kagascdine",
+                "instruction": "Ngày uống 1 lần, mỗi lần 1 viên",
                 "mapping_status": "ingredient_with_brand",
                 "requires_review": False,
                 "warnings": [],
@@ -33,6 +34,7 @@ def _normalized_result() -> dict[str, Any]:
                 "raw_line": "2. Metformin (Panfor SR) 750mg",
                 "generic_text": "Metformin",
                 "brand_text": "Panfor SR",
+                "instruction": "Ngày uống 2 lần, mỗi lần 1 viên",
                 "mapping_status": "ingredient_with_brand",
                 "requires_review": False,
                 "warnings": ["brand_not_found"],
@@ -51,6 +53,7 @@ def _normalized_result() -> dict[str, Any]:
                 "raw_line": "3. Paracetamol (Hapacol) 500mg",
                 "generic_text": "Paracetamol",
                 "brand_text": "Hapacol",
+                "instruction": "Ngày uống 3 lần, mỗi lần 1 viên khi đau",
                 "mapping_status": "ingredient_with_brand",
                 "requires_review": False,
                 "warnings": [],
@@ -189,6 +192,7 @@ def test_context_includes_concise_medications_and_interaction_candidates() -> No
         "raw_line": "1. Omeprazol (Kagascdine) 20mg",
         "generic_text": "Omeprazol",
         "brand_text": "Kagascdine",
+        "instruction": "Ngày uống 1 lần, mỗi lần 1 viên",
         "mapping_status": "ingredient_with_brand",
         "requires_review": False,
         "warnings": [],
@@ -270,6 +274,42 @@ def test_valid_fake_llm_output_is_preserved() -> None:
         "interaction-2",
     ]
     assert llm.calls
+
+
+def test_llm_dosage_missing_information_is_removed_when_instructions_exist() -> None:
+    llm = MethodLLM(
+        {
+            "overall_risk_level": "unknown",
+            "risk_items": [],
+            "missing_information": [
+                "Thiếu thông tin về liều dùng cụ thể hằng ngày của từng thuốc.",
+                "renal_function",
+            ],
+        }
+    )
+
+    result = RiskAnalyzerService(llm_client=llm).analyze(
+        _normalized_result(),
+        _evidence_bundle(),
+        patient_context={
+            "age": 60,
+            "sex": "male",
+            "allergies": "Không ghi nhận",
+            "pregnancy_status": "Không áp dụng",
+            "renal_function": "Chưa có thông tin",
+            "hepatic_function": "Bình thường",
+            "diagnoses": "Tăng huyết áp",
+            "current_medications": "Theo đơn",
+        },
+    )
+
+    assert "Thiếu thông tin về liều dùng cụ thể hằng ngày của từng thuốc." not in result[
+        "missing_information"
+    ]
+    assert "renal_function" in result["missing_information"]
+    assert llm.calls[0]["medications"][0]["instruction"] == (
+        "Ngày uống 1 lần, mỗi lần 1 viên"
+    )
 
 
 def test_unsupported_evidence_refs_are_removed() -> None:

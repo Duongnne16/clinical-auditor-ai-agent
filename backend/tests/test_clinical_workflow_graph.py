@@ -17,15 +17,19 @@ from backend.app.services.clinical_intent import ClinicalIntent
 from backend.app.services.clinical_workflow_graph import (
     ClinicalWorkflowGraphService,
     ClinicalWorkflowState,
+    TOP_LEVEL_SAFETY_WARNING,
 )
 
 
 class FakePrescriptionAuditService:
-    def __init__(self) -> None:
+    def __init__(self, payload: dict[str, Any] | None = None) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.payload = payload
 
     def audit_text(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(kwargs)
+        if self.payload is not None:
+            return self.payload
         return {
             "status": "fake_prescription_audit_ok",
             "source": "fake_audit_service",
@@ -34,11 +38,14 @@ class FakePrescriptionAuditService:
 
 
 class FakeChatQueryService:
-    def __init__(self) -> None:
+    def __init__(self, payload: dict[str, Any] | None = None) -> None:
         self.calls: list[Any] = []
+        self.payload = payload
 
     def answer(self, request: Any) -> dict[str, Any]:
         self.calls.append(request)
+        if self.payload is not None:
+            return self.payload
         return {
             "status": "fake_chat_ok",
             "intent": request.intent or "single_drug_query",
@@ -372,8 +379,225 @@ def test_trace_contains_out_of_scope_branch_flow() -> None:
 def test_safety_check_does_not_rewrite_final_result() -> None:
     state = _invoke("chat", "Aspirin dose information")
 
-    assert state["safety_status"] == "not_applied_skeleton"
+    assert state["safety_status"] == "applied"
     assert state["final_result"] == state["draft_output"]
+
+
+def test_top_level_safety_rewrites_equal_chat_answer_and_message() -> None:
+    unsafe_text = "Người bệnh nên ngừng thuốc, tăng liều hoặc đổi thuốc."
+    payload = {
+        "message": unsafe_text,
+        "answer": unsafe_text,
+        "intent": "single_drug_query",
+        "normalized_drugs": [{"name": "Aspirin"}],
+        "sources": [{"title": "source"}],
+        "warnings": ["existing_warning"],
+    }
+    service = ClinicalWorkflowGraphService(chat_query_service=FakeChatQueryService(payload))
+
+    state = service._invoke_state(
+        {
+            "request_type": "chat",
+            "input_text": "Aspirin dose information",
+            "trace": [],
+        }
+    )
+    result = state["final_result"]
+
+    assert result["message"] == result["answer"]
+    lowered = result["answer"].casefold()
+    assert "ngừng thuốc" not in lowered
+    assert "tăng liều" not in lowered
+    assert "đổi thuốc" not in lowered
+    assert result["sources"] == payload["sources"]
+    assert result["normalized_drugs"] == payload["normalized_drugs"]
+    assert result["warnings"] == ["existing_warning", TOP_LEVEL_SAFETY_WARNING]
+    assert "doctor_memory" not in result
+
+
+def test_top_level_safety_preserves_chat_warnings_when_no_rewrite() -> None:
+    payload = {
+        "message": "Grounded safe answer.",
+        "answer": "Grounded safe answer.",
+        "intent": "single_drug_query",
+        "normalized_drugs": [],
+        "sources": [],
+        "warnings": ["existing_warning"],
+    }
+    service = ClinicalWorkflowGraphService(chat_query_service=FakeChatQueryService(payload))
+
+    state = service._invoke_state(
+        {
+            "request_type": "chat",
+            "input_text": "Aspirin dose information",
+            "trace": [],
+        }
+    )
+
+    assert state["safety_status"] == "applied"
+    assert state["final_result"]["warnings"] == ["existing_warning"]
+    assert TOP_LEVEL_SAFETY_WARNING not in state["final_result"]["warnings"]
+
+
+def test_top_level_safety_creates_warning_list_only_on_rewrite() -> None:
+    unsafe_payload = {
+        "message": "Có thể tăng liều.",
+        "answer": "Có thể tăng liều.",
+        "intent": "single_drug_query",
+        "normalized_drugs": [],
+        "sources": [],
+    }
+    service = ClinicalWorkflowGraphService(
+        chat_query_service=FakeChatQueryService(unsafe_payload)
+    )
+
+    unsafe_state = service._invoke_state(
+        {
+            "request_type": "chat",
+            "input_text": "Aspirin dose information",
+            "trace": [],
+        }
+    )
+
+    assert unsafe_state["final_result"]["warnings"] == [TOP_LEVEL_SAFETY_WARNING]
+
+    safe_payload = {
+        "message": "Grounded safe answer.",
+        "answer": "Grounded safe answer.",
+        "intent": "single_drug_query",
+        "normalized_drugs": [],
+        "sources": [],
+    }
+    safe_service = ClinicalWorkflowGraphService(
+        chat_query_service=FakeChatQueryService(safe_payload)
+    )
+
+    safe_state = safe_service._invoke_state(
+        {
+            "request_type": "chat",
+            "input_text": "Aspirin dose information",
+            "trace": [],
+        }
+    )
+
+    assert "warnings" not in safe_state["final_result"]
+
+
+def test_top_level_safety_preserves_non_list_warnings() -> None:
+    payload = {
+        "message": "Có thể đổi thuốc.",
+        "answer": "Có thể đổi thuốc.",
+        "intent": "single_drug_query",
+        "normalized_drugs": [],
+        "sources": [],
+        "warnings": "keep-original-warning-value",
+    }
+    service = ClinicalWorkflowGraphService(chat_query_service=FakeChatQueryService(payload))
+
+    state = service._invoke_state(
+        {
+            "request_type": "chat",
+            "input_text": "Aspirin dose information",
+            "trace": [],
+        }
+    )
+
+    assert "đổi thuốc" not in state["final_result"]["answer"].casefold()
+    assert state["final_result"]["warnings"] == "keep-original-warning-value"
+
+
+def test_out_of_scope_refusal_shape_is_preserved_with_applied_safety_status() -> None:
+    state = ClinicalWorkflowGraphService()._invoke_state(
+        {
+            "request_type": "chat",
+            "input_text": "Tell me a joke",
+            "doctor_id": "doctor-scope",
+            "trace": [],
+        }
+    )
+
+    assert state["safety_status"] == "applied"
+    assert state["final_result"] == {
+        "message": "This request is outside the supported clinical workflow.",
+        "answer": "This request is outside the supported clinical workflow.",
+        "intent": "out_of_scope",
+        "normalized_drugs": [],
+        "sources": [],
+        "warnings": [],
+        "doctor_id": "doctor-scope",
+    }
+
+
+def test_top_level_safety_rewrites_only_audit_doctor_facing_response() -> None:
+    report = {
+        "doctor_facing_response": "Bác sĩ có thể ngừng thuốc và tăng liều.",
+        "structured_note": "ngừng thuốc should stay here",
+    }
+    payload = {
+        "status": "partial_success",
+        "doctor_memory": {"matched_notes": [{"note_text": "private"}]},
+        "warnings": ["existing_warning"],
+        "errors": ["existing_error"],
+        "prescription_check": {"status": "evidence_ready"},
+        "risk_analysis": {
+            "risk_items": [{"recommendation": "Cần ngừng thuốc trong structured data."}]
+        },
+        "report": report,
+    }
+    service = ClinicalWorkflowGraphService(
+        prescription_audit_service=FakePrescriptionAuditService(payload)
+    )
+
+    state = service._invoke_state(
+        {
+            "request_type": "prescription_audit",
+            "input_text": "1. Paracetamol 500mg",
+            "trace": [],
+        }
+    )
+    result = state["final_result"]
+
+    assert result is not payload
+    assert result["report"] is not report
+    assert payload["report"]["doctor_facing_response"] == (
+        "Bác sĩ có thể ngừng thuốc và tăng liều."
+    )
+    assert "ngừng thuốc" not in result["report"]["doctor_facing_response"].casefold()
+    assert "tăng liều" not in result["report"]["doctor_facing_response"].casefold()
+    assert result["report"]["structured_note"] == "ngừng thuốc should stay here"
+    assert result["doctor_memory"] == payload["doctor_memory"]
+    assert result["warnings"] == ["existing_warning", TOP_LEVEL_SAFETY_WARNING]
+    assert payload["warnings"] == ["existing_warning"]
+    assert result["errors"] == payload["errors"]
+    assert result["prescription_check"] == payload["prescription_check"]
+    assert result["risk_analysis"] == payload["risk_analysis"]
+    assert "ngừng thuốc" in result["risk_analysis"]["risk_items"][0]["recommendation"]
+
+
+def test_top_level_safety_does_not_append_audit_warning_without_rewrite() -> None:
+    payload = {
+        "status": "partial_success",
+        "doctor_memory": {"matched_notes": []},
+        "warnings": ["existing_warning"],
+        "errors": [],
+        "prescription_check": {"status": "evidence_ready"},
+        "risk_analysis": {"risk_items": []},
+        "report": {"doctor_facing_response": "Kết quả kiểm tra đơn thuốc."},
+    }
+    service = ClinicalWorkflowGraphService(
+        prescription_audit_service=FakePrescriptionAuditService(payload)
+    )
+
+    state = service._invoke_state(
+        {
+            "request_type": "prescription_audit",
+            "input_text": "1. Paracetamol 500mg",
+            "trace": [],
+        }
+    )
+
+    assert state["safety_status"] == "applied"
+    assert state["final_result"]["warnings"] == ["existing_warning"]
 
 
 def test_chat_branch_does_not_populate_doctor_memory() -> None:

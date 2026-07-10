@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import hashlib
 import re
 import unicodedata
 import uuid
@@ -19,6 +20,34 @@ DEFAULT_NOTE_STATUS = "active"
 DEFAULT_NOTE_PRIORITY = "normal"
 DEFAULT_NOTE_TYPE = "clinical_experience"
 DEFAULT_SOURCE_CONTEXT = "prescription_audit"
+DOCTOR_MEMORY_SEMANTIC_VERSION = "doctor_memory_semantic_v2"
+MIN_AUDIT_SEMANTIC_SCORE = 0.35
+DOCTOR_MEMORY_PAYLOAD_INDEX_FIELDS = ("doctor_id", "status")
+NOTE_VALIDATION_ERROR_MESSAGE = (
+    "Ghi chú quá ngắn hoặc chưa đủ nội dung chuyên môn để lưu vào Doctor Memory."
+)
+_GENERIC_TITLES = {
+    "",
+    "ghi chu don thuoc",
+    "ghi chu rieng",
+    "doctor note",
+    # Existing UI literals are mojibake in the current source files.
+    "ghi chaº don thua c",
+    "ghi chaº riaang",
+}
+_LOW_VALUE_TOKENS = {
+    "abc",
+    "test",
+    "testing",
+    "note",
+    "notes",
+    "ghi",
+    "chu",
+}
+
+
+class DoctorMemoryValidationError(ValueError):
+    """Raised when a Doctor Memory note has no meaningful clinical content."""
 
 
 def _deduplicate(values: Iterable[str]) -> list[str]:
@@ -41,7 +70,59 @@ def _fold_text(value: Any) -> str:
     normalized = unicodedata.normalize("NFD", _normalize_text(value).casefold())
     return "".join(
         char for char in normalized if unicodedata.category(char) != "Mn"
-    ).replace("đ", "d")
+    ).replace("đ", "d").replace("Ä‘", "d")
+
+
+def _semantic_normalize(value: Any) -> str:
+    return _fold_text(value)
+
+
+def _text_tokens(value: Any) -> list[str]:
+    return re.findall(r"[\w]+", _semantic_normalize(value), flags=re.UNICODE)
+
+
+def _repeated_character_text(text: str) -> bool:
+    compact = re.sub(r"\s+", "", _semantic_normalize(text))
+    if len(compact) < 4:
+        return False
+    if re.fullmatch(r"(.)\1{3,}", compact):
+        return True
+    return bool(re.search(r"(.)\1{5,}", compact))
+
+
+def validate_doctor_note_content(note_text: Any) -> str:
+    text = _normalize_text(note_text)
+    if len(text) < 16:
+        raise DoctorMemoryValidationError(NOTE_VALIDATION_ERROR_MESSAGE)
+    if _repeated_character_text(text):
+        raise DoctorMemoryValidationError(NOTE_VALIDATION_ERROR_MESSAGE)
+
+    tokens = _text_tokens(text)
+    meaningful_tokens = [
+        token
+        for token in tokens
+        if len(token) >= 2
+        and token not in _LOW_VALUE_TOKENS
+        and not re.fullmatch(r"(.)\1{2,}", token)
+    ]
+    if len(meaningful_tokens) < 3:
+        raise DoctorMemoryValidationError(NOTE_VALIDATION_ERROR_MESSAGE)
+    token_counts = {
+        token: meaningful_tokens.count(token) for token in set(meaningful_tokens)
+    }
+    if token_counts and max(token_counts.values()) / len(meaningful_tokens) >= 0.67:
+        raise DoctorMemoryValidationError(NOTE_VALIDATION_ERROR_MESSAGE)
+    if len(set(meaningful_tokens)) < 2:
+        raise DoctorMemoryValidationError(NOTE_VALIDATION_ERROR_MESSAGE)
+    return text
+
+
+def is_meaningful_doctor_note_content(note_text: Any) -> bool:
+    try:
+        validate_doctor_note_content(note_text)
+    except DoctorMemoryValidationError:
+        return False
+    return True
 
 
 def _normalized_list(values: Any) -> list[str]:
@@ -151,6 +232,31 @@ class DoctorMemoryService:
                 "distance": DOCTOR_MEMORY_DISTANCE,
             }
 
+    @staticmethod
+    def _keyword_payload_schema() -> Any:
+        try:
+            from qdrant_client.http import models
+
+            return models.PayloadSchemaType.KEYWORD
+        except ImportError:
+            return "keyword"
+
+    def _ensure_payload_indexes(self, client: Any) -> None:
+        if not hasattr(client, "create_payload_index"):
+            return
+        for field_name in DOCTOR_MEMORY_PAYLOAD_INDEX_FIELDS:
+            try:
+                client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=field_name,
+                    field_schema=self._keyword_payload_schema(),
+                )
+            except Exception as exc:
+                message = str(exc).casefold()
+                if "already exists" in message or "already has" in message:
+                    continue
+                raise
+
     def ensure_collection(self) -> None:
         if self._collection_ensured:
             return
@@ -169,6 +275,7 @@ class DoctorMemoryService:
                 collection_name=self.collection_name,
                 vectors_config=self._vector_params(),
             )
+        self._ensure_payload_indexes(client)
         self._collection_ensured = True
 
     @staticmethod
@@ -230,17 +337,34 @@ class DoctorMemoryService:
 
     @classmethod
     def build_vector_text(cls, payload: dict[str, Any]) -> str:
-        parts = [
-            DOCTOR_MEMORY_LABEL,
-            payload.get("title"),
-            payload.get("note_text"),
-            " ".join(_as_list(payload.get("active_ingredients"))),
-            " ".join(_as_list(payload.get("drug_pair_keys"))),
-            " ".join(_as_list(payload.get("diagnosis_keywords"))),
-            " ".join(_as_list(payload.get("patient_tags"))),
-            payload.get("note_type"),
-        ]
+        title = payload.get("title")
+        parts = []
+        if not cls.is_generic_title(title):
+            parts.append(title)
+        parts.append(payload.get("note_text"))
         return "passage: " + _normalize_text(" ".join(str(part or "") for part in parts))
+
+    @staticmethod
+    def embedding_text_hash(vector_text: str) -> str:
+        return hashlib.sha256(vector_text.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def is_generic_title(title: Any) -> bool:
+        return _semantic_normalize(title) in _GENERIC_TITLES
+
+    @staticmethod
+    def derive_display_title(note_text: Any, max_length: int = 72) -> str:
+        text = _normalize_text(note_text)
+        if len(text) <= max_length:
+            return text
+        return text[: max_length - 3].rstrip() + "..."
+
+    @classmethod
+    def display_title(cls, title: Any, note_text: Any) -> str:
+        normalized_title = _normalize_text(title)
+        if normalized_title and not cls.is_generic_title(normalized_title):
+            return normalized_title
+        return cls.derive_display_title(note_text) or "Ghi chÃº riÃªng"
 
     @staticmethod
     def _search_query_text(query: str) -> str:
@@ -269,11 +393,12 @@ class DoctorMemoryService:
         pairs = _normalized_pair_list(drug_pair_keys or [])
         if not pairs and ingredients:
             pairs = DoctorMemoryService.build_drug_pair_keys(ingredients)
-        return {
+        normalized_note_text = validate_doctor_note_content(note_text)
+        payload = {
             "note_id": note_id,
             "doctor_id": doctor_id,
             "title": _normalize_text(title),
-            "note_text": _normalize_text(note_text),
+            "note_text": normalized_note_text,
             "note_type": _normalize_text(note_type) or DEFAULT_NOTE_TYPE,
             "source_context": _normalize_text(source_context) or DEFAULT_SOURCE_CONTEXT,
             "active_ingredients": ingredients,
@@ -286,6 +411,12 @@ class DoctorMemoryService:
             "created_at": created_at or now,
             "updated_at": updated_at or now,
         }
+        vector_text = DoctorMemoryService.build_vector_text(payload)
+        payload["embedding_text_version"] = DOCTOR_MEMORY_SEMANTIC_VERSION
+        payload["embedding_text_hash"] = DoctorMemoryService.embedding_text_hash(
+            vector_text
+        )
+        return payload
 
     def save_note(
         self,
@@ -348,6 +479,16 @@ class DoctorMemoryService:
         return payload if isinstance(payload, dict) else {}
 
     @staticmethod
+    def _scroll_point_id(point: Any) -> str | None:
+        if isinstance(point, tuple) and point:
+            point = point[0]
+        if isinstance(point, dict):
+            value = point.get("id")
+            return str(value) if value is not None else None
+        value = getattr(point, "id", None)
+        return str(value) if value is not None else None
+
+    @staticmethod
     def _point_score(point: Any) -> float:
         try:
             return float(getattr(point, "score", 0.0) or 0.0)
@@ -358,7 +499,7 @@ class DoctorMemoryService:
     def _public_note(cls, payload: dict[str, Any], score: float) -> dict[str, Any]:
         return {
             "note_id": payload.get("note_id"),
-            "title": payload.get("title"),
+            "title": cls.display_title(payload.get("title"), payload.get("note_text")),
             "note_text": payload.get("note_text"),
             "note_type": payload.get("note_type"),
             "source_context": payload.get("source_context"),
@@ -464,6 +605,100 @@ class DoctorMemoryService:
             notes.append(note)
         notes.sort(key=lambda item: item.get("score") or 0, reverse=True)
         return notes[:limit]
+
+    @staticmethod
+    def _unpack_scroll_response(response: Any) -> tuple[list[Any], Any | None]:
+        if isinstance(response, tuple):
+            points = response[0] if response else []
+            next_page = response[1] if len(response) > 1 else None
+            return list(points or []), next_page
+        return list(response or []), None
+
+    def reindex_semantic_v2(
+        self,
+        *,
+        batch_size: int = 100,
+        dry_run: bool = False,
+        max_batches: int | None = None,
+    ) -> dict[str, int]:
+        if batch_size <= 0:
+            raise ValueError("batch_size must be greater than 0")
+        self.ensure_collection()
+        client = self._get_client()
+        if not hasattr(client, "scroll"):
+            raise RuntimeError("qdrant client does not support scroll")
+
+        summary = {
+            "scanned": 0,
+            "already_v2": 0,
+            "invalid": 0,
+            "reindexed": 0,
+            "failed": 0,
+        }
+        offset = None
+        batches = 0
+        while True:
+            if max_batches is not None and batches >= max_batches:
+                break
+            scroll_kwargs = {
+                "collection_name": self.collection_name,
+                "limit": batch_size,
+                "with_payload": True,
+                "with_vectors": False,
+            }
+            if offset is not None:
+                scroll_kwargs["offset"] = offset
+            try:
+                response = client.scroll(**scroll_kwargs)
+            except TypeError:
+                scroll_kwargs.pop("with_vectors", None)
+                response = client.scroll(**scroll_kwargs)
+            points, offset = self._unpack_scroll_response(response)
+            if not points:
+                break
+            batches += 1
+            for point in points:
+                summary["scanned"] += 1
+                payload = self._scroll_point_payload(point)
+                if self._is_semantic_v2_payload(payload):
+                    summary["already_v2"] += 1
+                    continue
+                if not is_meaningful_doctor_note_content(payload.get("note_text")):
+                    summary["invalid"] += 1
+                    continue
+                updated_payload = dict(payload)
+                vector_text = self.build_vector_text(updated_payload)
+                updated_payload["embedding_text_version"] = DOCTOR_MEMORY_SEMANTIC_VERSION
+                updated_payload["embedding_text_hash"] = self.embedding_text_hash(
+                    vector_text
+                )
+                point_id = (
+                    self._scroll_point_id(point)
+                    or str(updated_payload.get("note_id") or "")
+                )
+                if not point_id:
+                    summary["failed"] += 1
+                    continue
+                if dry_run:
+                    summary["reindexed"] += 1
+                    continue
+                try:
+                    self._get_client().upsert(
+                        collection_name=self.collection_name,
+                        points=[
+                            self._point_struct(
+                                point_id,
+                                self._embed(vector_text),
+                                updated_payload,
+                            )
+                        ],
+                    )
+                    summary["reindexed"] += 1
+                except Exception:
+                    summary["failed"] += 1
+            if offset is None:
+                break
+        return summary
 
     def search_notes(
         self,
@@ -616,9 +851,7 @@ class DoctorMemoryService:
     def _query_from_audit_context(context: dict[str, Any]) -> str:
         return " ".join(
             [
-                DOCTOR_MEMORY_LABEL,
                 " ".join(context.get("active_ingredients") or []),
-                " ".join(context.get("drug_pair_keys") or []),
                 " ".join(context.get("diagnosis_keywords") or []),
                 " ".join(context.get("patient_tags") or []),
                 " ".join(context.get("risk_types") or []),
@@ -644,19 +877,73 @@ class DoctorMemoryService:
         return len(set(left) & set(right))
 
     @classmethod
-    def _audit_rerank_score(cls, note: dict[str, Any], context: dict[str, Any]) -> float:
-        score = float(note.get("score") or 0.0)
+    def _audit_metadata_overlap(cls, note: dict[str, Any], context: dict[str, Any]) -> int:
+        score = 0
         if set(note.get("drug_pair_keys") or []) & set(context.get("drug_pair_keys") or []):
-            score += 5
-        if cls._overlap(note.get("active_ingredients") or [], context.get("active_ingredients") or []):
-            score += 3
-        if cls._overlap(note.get("patient_tags") or [], context.get("patient_tags") or []):
-            score += 3
-        if cls._overlap(note.get("diagnosis_keywords") or [], context.get("diagnosis_keywords") or []):
-            score += 2
+            score += 1
+        score += cls._overlap(
+            note.get("active_ingredients") or [],
+            context.get("active_ingredients") or [],
+        )
+        score += cls._overlap(
+            note.get("patient_tags") or [],
+            context.get("patient_tags") or [],
+        )
+        score += cls._overlap(
+            note.get("diagnosis_keywords") or [],
+            context.get("diagnosis_keywords") or [],
+        )
         if note.get("source_context") == context.get("source_context"):
             score += 1
         return score
+
+    @staticmethod
+    def _metadata_tie_break_bonus(metadata_overlap: int) -> float:
+        return min(max(metadata_overlap, 0) * 0.01, 0.05)
+
+    @staticmethod
+    def _is_semantic_v2_payload(payload: dict[str, Any]) -> bool:
+        return payload.get("embedding_text_version") == DOCTOR_MEMORY_SEMANTIC_VERSION
+
+    def _audit_semantic_candidates(
+        self,
+        *,
+        doctor_id: str,
+        query: str,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        self.ensure_collection()
+        if self.settings.disable_local_embeddings and self.embedding_model is None:
+            return []
+        try:
+            response = self._get_client().query_points(
+                collection_name=self.collection_name,
+                query=self._embed(self._search_query_text(query)),
+                query_filter=self._doctor_filter(doctor_id),
+                limit=limit,
+                with_payload=True,
+            )
+        except Exception:
+            return []
+        points = list(getattr(response, "points", response or []))
+        candidates: list[dict[str, Any]] = []
+        for point in points:
+            payload = self._point_payload(point)
+            if payload.get("doctor_id") != doctor_id:
+                continue
+            if payload.get("status") != DEFAULT_NOTE_STATUS:
+                continue
+            if not self._is_semantic_v2_payload(payload):
+                continue
+            if not is_meaningful_doctor_note_content(payload.get("note_text")):
+                continue
+            semantic_score = self._point_score(point)
+            if semantic_score < MIN_AUDIT_SEMANTIC_SCORE:
+                continue
+            note = self._public_note(payload, semantic_score)
+            note["semantic_score"] = round(semantic_score, 6)
+            candidates.append(note)
+        return candidates
 
     def retrieve_for_audit_context(
         self,
@@ -681,23 +968,36 @@ class DoctorMemoryService:
             or context["patient_tags"]
         ):
             return {"matched_notes": []}
-        notes = self.search_notes(
+        candidate_limit = max(max_notes * 10, 30)
+        notes = self._audit_semantic_candidates(
             doctor_id=doctor_id,
             query=self._query_from_audit_context(context),
-            top_k=max(max_notes * 5, 10),
+            limit=candidate_limit,
         )
         reranked: list[dict[str, Any]] = []
         for note in notes:
             if self._applicability_conflicts(note, context):
                 continue
-            final_score = self._audit_rerank_score(note, context)
-            if final_score < 3:
-                continue
+            semantic_score = float(note.get("semantic_score") or note.get("score") or 0.0)
+            metadata_overlap = self._audit_metadata_overlap(note, context)
+            ranking_score = semantic_score + self._metadata_tie_break_bonus(
+                metadata_overlap
+            )
             copied = dict(note)
-            copied["score"] = round(final_score, 6)
+            copied["score"] = round(ranking_score, 6)
+            copied["semantic_score"] = round(semantic_score, 6)
+            copied["ranking_score"] = round(ranking_score, 6)
+            copied["metadata_overlap"] = metadata_overlap
             copied["match_reason"] = "audit_context_match"
             reranked.append(copied)
-        reranked.sort(key=lambda item: item.get("score") or 0, reverse=True)
+        reranked.sort(
+            key=lambda item: (
+                item.get("ranking_score") or 0,
+                item.get("metadata_overlap") or 0,
+                item.get("semantic_score") or 0,
+            ),
+            reverse=True,
+        )
         return {"matched_notes": reranked[:max_notes]}
 
     def get_stats(self) -> dict[str, Any]:

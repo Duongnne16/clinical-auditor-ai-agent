@@ -3,10 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
+
 from backend.app.services.doctor_memory_service import (
+    DOCTOR_MEMORY_SEMANTIC_VERSION,
     DOCTOR_MEMORY_VECTOR_SIZE,
+    MIN_AUDIT_SEMANTIC_SCORE,
+    DoctorMemoryValidationError,
     DoctorMemoryService,
     get_doctor_memory_service,
+    validate_doctor_note_content,
 )
 
 
@@ -25,6 +31,7 @@ class FakeEmbeddingModel:
 class FakePoint:
     payload: dict[str, Any]
     score: float
+    id: str | None = None
 
 
 class FakeResponse:
@@ -48,6 +55,7 @@ class FakeQdrantClient:
         self.scroll_rejects_with_vectors = scroll_rejects_with_vectors
         self.collection_exists_calls: list[dict[str, Any]] = []
         self.create_collection_calls: list[dict[str, Any]] = []
+        self.create_payload_index_calls: list[dict[str, Any]] = []
         self.upsert_calls: list[dict[str, Any]] = []
         self.query_points_calls: list[dict[str, Any]] = []
         self.scroll_calls: list[dict[str, Any]] = []
@@ -59,6 +67,9 @@ class FakeQdrantClient:
     def create_collection(self, **kwargs: Any) -> None:
         self.create_collection_calls.append(kwargs)
         self.collection_exists_value = True
+
+    def create_payload_index(self, **kwargs: Any) -> None:
+        self.create_payload_index_calls.append(kwargs)
 
     def upsert(self, **kwargs: Any) -> None:
         self.upsert_calls.append(kwargs)
@@ -117,6 +128,13 @@ def _payload(point: Any) -> dict[str, Any]:
     return point.payload
 
 
+def _v2(payload: dict[str, Any]) -> dict[str, Any]:
+    return payload | {
+        "embedding_text_version": DOCTOR_MEMORY_SEMANTIC_VERSION,
+        "embedding_text_hash": "hash",
+    }
+
+
 def _vector_size(vectors_config: Any) -> int:
     if isinstance(vectors_config, dict):
         return int(vectors_config["size"])
@@ -140,6 +158,26 @@ def test_ensure_collection_creates_missing_collection_with_cosine_768() -> None:
     vectors_config = client.create_collection_calls[0]["vectors_config"]
     assert _vector_size(vectors_config) == DOCTOR_MEMORY_VECTOR_SIZE
     assert "cosine" in _distance_text(vectors_config)
+    assert [call["field_name"] for call in client.create_payload_index_calls] == [
+        "doctor_id",
+        "status",
+    ]
+    assert all(
+        str(call["field_schema"]).casefold().endswith("keyword")
+        for call in client.create_payload_index_calls
+    )
+
+
+def test_ensure_collection_creates_payload_indexes_for_existing_collection() -> None:
+    service, client, _ = _service(FakeQdrantClient(collection_exists=True))
+
+    service.ensure_collection()
+
+    assert client.create_collection_calls == []
+    assert [call["field_name"] for call in client.create_payload_index_calls] == [
+        "doctor_id",
+        "status",
+    ]
 
 
 def test_save_note_upserts_doctor_scoped_payload() -> None:
@@ -168,7 +206,41 @@ def test_save_note_upserts_doctor_scoped_payload() -> None:
     assert point_payload["active_ingredients"] == ["levofloxacin", "sucralfate"]
     assert point_payload["drug_pair_keys"] == ["levofloxacin|sucralfate"]
     assert point_payload["status"] == "active"
+    assert point_payload["embedding_text_version"] == DOCTOR_MEMORY_SEMANTIC_VERSION
+    assert point_payload["embedding_text_hash"]
     assert payload["note_id"] == "note-1"
+
+
+@pytest.mark.parametrize("note_text", ["   ", "test", "abc", "aaaa", "hẹ hẹ hẹ"])
+def test_note_content_validator_rejects_meaningless_notes(note_text: str) -> None:
+    with pytest.raises(DoctorMemoryValidationError):
+        validate_doctor_note_content(note_text)
+
+
+def test_save_note_rejects_invalid_note_before_upsert() -> None:
+    service, client, _ = _service(FakeQdrantClient(collection_exists=True))
+
+    with pytest.raises(DoctorMemoryValidationError):
+        service.save_note(
+            doctor_id="doctor-1",
+            note_id="invalid",
+            title="Ghi chú đơn thuốc",
+            note_text="hẹ hẹ hẹ",
+        )
+
+    assert client.upsert_calls == []
+
+
+def test_generic_title_is_excluded_from_vector_text() -> None:
+    generic = DoctorMemoryService.build_vector_text(
+        {"title": "Ghi chú đơn thuốc", "note_text": "Theo dõi men gan khi dùng Rosuvastatin."}
+    )
+    meaningful = DoctorMemoryService.build_vector_text(
+        {"title": "Rosuvastatin và men gan", "note_text": "Theo dõi men gan khi dùng Rosuvastatin."}
+    )
+
+    assert "Ghi chú đơn thuốc" not in generic
+    assert "Rosuvastatin và men gan" in meaningful
 
 
 def test_search_notes_filters_by_doctor_id_and_status() -> None:
@@ -343,8 +415,8 @@ def test_retrieve_for_audit_context_reranks_matches_and_excludes_conflict() -> N
         FakeQdrantClient(
             responses=[
                 [
-                    FakePoint(conflict, 0.9),
-                    FakePoint(matching, 0.5),
+                    FakePoint(_v2(conflict), 0.9),
+                    FakePoint(_v2(matching), 0.5),
                 ]
             ]
         )
@@ -367,6 +439,185 @@ def test_retrieve_for_audit_context_reranks_matches_and_excludes_conflict() -> N
 
     assert [note["note_id"] for note in result["matched_notes"]] == ["match"]
     assert result["matched_notes"][0]["match_reason"] == "audit_context_match"
+    assert result["matched_notes"][0]["semantic_score"] == 0.5
+    assert result["matched_notes"][0]["ranking_score"] > 0.5
+
+
+def test_audit_retrieval_skips_legacy_candidate_even_with_high_raw_score() -> None:
+    legacy = {
+        "note_id": "legacy",
+        "doctor_id": "doctor-1",
+        "title": "Rosuvastatin",
+        "note_text": "Theo dõi men gan và đau cơ khi dùng Rosuvastatin.",
+        "status": "active",
+        "active_ingredients": ["rosuvastatin"],
+    }
+    service, _, _ = _service(
+        FakeQdrantClient(responses=[[FakePoint(legacy, 0.99)]])
+    )
+
+    result = service.retrieve_for_audit_context(
+        doctor_id="doctor-1",
+        normalized_result={
+            "medications": [
+                {"active_ingredients": [{"evidence_slug": "rosuvastatin"}]},
+            ]
+        },
+        patient_context={"hepatic_function": "hepatic impairment"},
+    )
+
+    assert result == {"matched_notes": []}
+
+
+def test_audit_retrieval_gates_on_raw_semantic_score_before_metadata() -> None:
+    below_threshold = _v2(
+        {
+            "note_id": "below",
+            "doctor_id": "doctor-1",
+            "title": "Rosuvastatin",
+            "note_text": "Theo dõi men gan và đau cơ khi dùng Rosuvastatin.",
+            "status": "active",
+            "source_context": "prescription_audit",
+            "active_ingredients": ["rosuvastatin"],
+            "patient_tags": ["hepatic_impairment"],
+        }
+    )
+    above_threshold = below_threshold | {"note_id": "above"}
+    service, _, _ = _service(
+        FakeQdrantClient(
+            responses=[
+                [
+                    FakePoint(below_threshold, MIN_AUDIT_SEMANTIC_SCORE - 0.01),
+                    FakePoint(above_threshold, MIN_AUDIT_SEMANTIC_SCORE),
+                ]
+            ]
+        )
+    )
+
+    result = service.retrieve_for_audit_context(
+        doctor_id="doctor-1",
+        normalized_result={
+            "medications": [
+                {"active_ingredients": [{"evidence_slug": "rosuvastatin"}]},
+            ]
+        },
+        patient_context={"hepatic_function": "hepatic impairment"},
+    )
+
+    assert [note["note_id"] for note in result["matched_notes"]] == ["above"]
+    assert result["matched_notes"][0]["semantic_score"] == MIN_AUDIT_SEMANTIC_SCORE
+
+
+def test_audit_retrieval_uses_metadata_only_as_tie_break_after_gate() -> None:
+    base = {
+        "doctor_id": "doctor-1",
+        "title": "Rosuvastatin",
+        "note_text": "Theo dõi men gan và đau cơ khi dùng Rosuvastatin.",
+        "status": "active",
+        "source_context": "prescription_audit",
+    }
+    weak_metadata = _v2(base | {"note_id": "weak", "active_ingredients": []})
+    strong_metadata = _v2(
+        base
+        | {
+            "note_id": "strong",
+            "active_ingredients": ["rosuvastatin"],
+            "patient_tags": ["hepatic_impairment"],
+        }
+    )
+    service, _, _ = _service(
+        FakeQdrantClient(
+            responses=[[FakePoint(weak_metadata, 0.55), FakePoint(strong_metadata, 0.55)]]
+        )
+    )
+
+    result = service.retrieve_for_audit_context(
+        doctor_id="doctor-1",
+        normalized_result={
+            "medications": [
+                {"active_ingredients": [{"evidence_slug": "rosuvastatin"}]},
+            ]
+        },
+        patient_context={"hepatic_function": "hepatic impairment"},
+    )
+
+    assert [note["note_id"] for note in result["matched_notes"]][:2] == [
+        "strong",
+        "weak",
+    ]
+    assert result["matched_notes"][0]["semantic_score"] == 0.55
+
+
+def test_audit_retrieval_queries_large_candidate_pool_and_slices_to_three() -> None:
+    points = [
+        FakePoint(
+            _v2(
+                {
+                    "note_id": f"n{index}",
+                    "doctor_id": "doctor-1",
+                    "title": f"Rosuvastatin {index}",
+                    "note_text": "Theo dõi men gan và đau cơ khi dùng Rosuvastatin.",
+                    "status": "active",
+                    "active_ingredients": ["rosuvastatin"],
+                }
+            ),
+            0.9 - index * 0.01,
+        )
+        for index in range(5)
+    ]
+    client = FakeQdrantClient(responses=[points])
+    service, client, _ = _service(client)
+
+    result = service.retrieve_for_audit_context(
+        doctor_id="doctor-1",
+        normalized_result={
+            "medications": [
+                {"active_ingredients": [{"evidence_slug": "rosuvastatin"}]},
+            ]
+        },
+        patient_context={},
+        max_notes=3,
+    )
+
+    assert client.query_points_calls[0]["limit"] > 3
+    assert [note["note_id"] for note in result["matched_notes"]] == ["n0", "n1", "n2"]
+
+
+def test_reindex_semantic_v2_updates_legacy_payloads_and_skips_invalid_or_v2() -> None:
+    legacy = {
+        "note_id": "legacy",
+        "doctor_id": "doctor-1",
+        "title": "Ghi chú đơn thuốc",
+        "note_text": "Theo dõi men gan và đau cơ khi dùng Rosuvastatin.",
+        "status": "active",
+        "active_ingredients": ["rosuvastatin"],
+    }
+    invalid = legacy | {"note_id": "invalid", "note_text": "hẹ hẹ hẹ"}
+    current = _v2(legacy | {"note_id": "current"})
+    client = FakeQdrantClient(
+        scroll_points=[
+            FakePoint(legacy, 0.0, id="legacy"),
+            FakePoint(invalid, 0.0, id="invalid"),
+            FakePoint(current, 0.0, id="current"),
+        ]
+    )
+    service, client, _ = _service(client)
+
+    summary = service.reindex_semantic_v2(batch_size=10)
+
+    assert summary == {
+        "scanned": 3,
+        "already_v2": 1,
+        "invalid": 1,
+        "reindexed": 1,
+        "failed": 0,
+    }
+    assert len(client.upsert_calls) == 1
+    point_payload = _payload(client.upsert_calls[0]["points"][0])
+    assert point_payload["note_id"] == "legacy"
+    assert point_payload["active_ingredients"] == ["rosuvastatin"]
+    assert point_payload["embedding_text_version"] == DOCTOR_MEMORY_SEMANTIC_VERSION
+    assert point_payload["embedding_text_hash"]
 
 
 def test_embedding_model_is_reused_for_multiple_calls() -> None:

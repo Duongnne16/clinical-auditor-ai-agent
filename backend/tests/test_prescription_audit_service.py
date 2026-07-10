@@ -7,6 +7,7 @@ import pytest
 from backend.app.services.prescription_audit_graph import PrescriptionAuditGraphService
 from backend.app.services.prescription_audit_service import PrescriptionAuditService
 from backend.app.services.doctor_memory_service import DOCTOR_MEMORY_LABEL
+from backend.app.services.doctor_report_composer_service import DoctorReportComposerService
 
 
 def _prescription_check(
@@ -125,10 +126,11 @@ class FakeReportGeneratorService:
 class FakeDoctorReportComposerService:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.real = DoctorReportComposerService(enabled=False)
 
     def compose(self, report: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(report)
-        return report | {"doctor_facing_response": "Kết quả kiểm tra đơn thuốc"}
+        return self.real.compose(report)
 
     def get_stats(self) -> dict[str, Any]:
         return {"service": "FakeDoctorReportComposerService"}
@@ -259,6 +261,14 @@ STRUCTURED_MEDICATION_TEXT = """1. Omeprazole (Losec) 20mg x 15 viên
    Ngày uống 3 lần, mỗi lần 1 gói"""
 
 
+def _assert_full_section_headings(report: dict[str, Any]) -> None:
+    text = report["doctor_facing_response"]
+    assert "KẾT QUẢ KIỂM TRA ĐƠN THUỐC" in text
+    assert "KIỂM TRA TƯƠNG TÁC GIỮA CÁC THUỐC TRONG ĐƠN" in text
+    assert "GHI CHÚ RIÊNG CỦA BÁC SĨ" in text
+    assert "LƯU Ý AN TOÀN" in text
+
+
 def test_use_gemini_false_context_ready_returns_partial_success() -> None:
     checker = FakePrescriptionCheckService()
     analyzer = FakeRiskAnalyzer(_risk_analysis("analysis_context_ready"))
@@ -288,7 +298,7 @@ def test_use_gemini_false_context_ready_returns_partial_success() -> None:
     assert reporter.calls[0]["risk_analysis"]["safety_marker"] is True
     assert reporter.calls[0]["normalized_result"] == checker.result["normalized_result"]
     assert result["report"]["doctor_facing_response"].startswith(
-        "Kết quả kiểm tra đơn thuốc"
+        "KẾT QUẢ KIỂM TRA ĐƠN THUỐC"
     )
 
 
@@ -518,7 +528,15 @@ def test_audit_service_calls_doctor_report_composer_after_report_generation() ->
     result = service.audit_text("1. Omeprazol 20mg")
 
     assert composer.calls == [reporter.result]
-    assert result["report"]["doctor_facing_response"] == "Kết quả kiểm tra đơn thuốc"
+    assert result["report"]["doctor_facing_response"].startswith(
+        "KẾT QUẢ KIỂM TRA ĐƠN THUỐC"
+    )
+    assert set(result["report"]["doctor_facing_sections"]) >= {
+        "prescription_check",
+        "interaction_check",
+        "doctor_memory",
+        "safety_note",
+    }
 
 
 def test_structured_document_parser_sends_only_medications_to_checker() -> None:
@@ -680,8 +698,20 @@ def test_audit_includes_matching_doctor_memory_section() -> None:
 
     assert result["doctor_memory"]["matched_notes"][0]["note_id"] == "n1"
     assert result["report"]["doctor_memory"] == result["doctor_memory"]
-    assert "Ghi chú riêng của bác sĩ" in result["report"]["doctor_facing_response"]
+    memory_section = result["report"]["doctor_facing_sections"]["doctor_memory"]
+    assert memory_section["items"] == [
+        {
+            "title": "Levofloxacin + Sucralfate",
+            "content": "Rà soát thời điểm dùng.",
+        }
+    ]
+    assert result["report"]["doctor_facing_response"].count(
+        "GHI CHÚ RIÊNG CỦA BÁC SĨ"
+    ) == 1
+    _assert_full_section_headings(result["report"])
     assert "Rà soát thời điểm dùng" in result["report"]["doctor_facing_response"]
+    assert "score" not in result["report"]["doctor_facing_response"].casefold()
+    assert "note_id" not in result["report"]["doctor_facing_response"].casefold()
     assert result["risk_analysis"]["overall_risk_level"] == "high"
     assert analyzer.calls[0] == {
         "normalized_result": normalized_result,
@@ -696,6 +726,36 @@ def test_audit_includes_matching_doctor_memory_section() -> None:
         "Rà soát thời điểm dùng" in str(source)
         for source in result["report"].get("evidence_sources", [])
     )
+
+
+def test_audit_memory_section_derives_display_title_for_generic_title() -> None:
+    memory = FakeDoctorMemoryService(
+        {
+            "matched_notes": [
+                {
+                    "note_id": "n1",
+                    "title": "Ghi chú đơn thuốc",
+                    "note_text": "Bệnh nhân được kê Rosuvastatin 20mg do nguy cơ tim mạch cao.",
+                }
+            ]
+        }
+    )
+    service = PrescriptionAuditService(
+        prescription_check_service=FakePrescriptionCheckService(),
+        report_generator_service=FakeReportGeneratorService(_report("report_ready")),
+        doctor_report_composer_service=FakeDoctorReportComposerService(),
+        safety_layer_service=FakeSafetyLayerService(),
+        risk_analyzer_service_factory=FakeRiskAnalyzerFactory(
+            FakeRiskAnalyzer(_risk_analysis("analysis_ready"))
+        ),
+        doctor_memory_service=memory,
+    )
+
+    result = service.audit_text("1. Rosuvastatin 20mg", doctor_id="doctor-1")
+
+    item = result["report"]["doctor_facing_sections"]["doctor_memory"]["items"][0]
+    assert item["title"].startswith("Bệnh nhân được kê Rosuvastatin")
+    assert item["title"] != "Ghi chú đơn thuốc"
 
 
 def test_audit_no_memory_does_not_alter_doctor_facing_response() -> None:
@@ -715,10 +775,15 @@ def test_audit_no_memory_does_not_alter_doctor_facing_response() -> None:
     result = service.audit_text("1. Omeprazol 20mg", doctor_id="doctor-1")
 
     assert result["doctor_memory"] == {"matched_notes": []}
-    assert result["report"]["doctor_facing_response"] == composer.compose({})[
-        "doctor_facing_response"
-    ]
-    assert "Ghi chú riêng của bác sĩ" not in result["report"]["doctor_facing_response"]
+    assert result["report"]["doctor_facing_sections"]["doctor_memory"] == {
+        "title": "GHI CHÚ RIÊNG CỦA BÁC SĨ",
+        "summary": "Chưa có ghi chú liên quan.",
+        "items": [],
+    }
+    assert result["report"]["doctor_facing_response"].count(
+        "GHI CHÚ RIÊNG CỦA BÁC SĨ"
+    ) == 1
+    assert "Chưa có ghi chú liên quan." in result["report"]["doctor_facing_response"]
 
 
 def test_audit_memory_failure_does_not_fail_audit() -> None:
@@ -775,7 +840,11 @@ def test_doctor_memory_notes_are_sanitized_and_not_evidence_sources() -> None:
 
     assert "tăng liều" not in doctor_text.casefold()
     assert "đổi thuốc" not in doctor_text.casefold()
-    assert "Ghi chú riêng của bác sĩ" in doctor_text
+    memory_section = result["report"]["doctor_facing_sections"]["doctor_memory"]
+    assert memory_section["items"][0]["title"] == "Private note"
+    assert "tăng liều" not in memory_section["items"][0]["content"].casefold()
+    assert "đổi thuốc" not in memory_section["items"][0]["content"].casefold()
+    assert "GHI CHÚ RIÊNG CỦA BÁC SĨ" in doctor_text
     assert result["report"]["evidence_sources"] == [
         {"chunk_id": "c1", "snippet": "medical evidence"}
     ]
@@ -867,7 +936,8 @@ def test_graph_related_levofloxacin_sucralfate_returns_memory_note() -> None:
     result = service.audit_text("1. Levofloxacin\n2. Sucralfate", doctor_id="doctor-1")
 
     assert result["doctor_memory"]["matched_notes"][0]["note_id"] == "levo-sucralfate"
-    assert DOCTOR_MEMORY_LABEL in result["report"]["doctor_facing_response"]
+    assert DOCTOR_MEMORY_LABEL.upper() in result["report"]["doctor_facing_response"]
+    assert result["report"]["doctor_facing_sections"]["doctor_memory"]["items"]
     assert memory.calls[0]["risk_analysis"] is None
 
 
@@ -895,4 +965,9 @@ def test_graph_unrelated_paracetamol_cetirizine_excludes_memory_note() -> None:
     result = service.audit_text("1. Paracetamol\n2. Cetirizine", doctor_id="doctor-1")
 
     assert result["doctor_memory"] == {"matched_notes": []}
-    assert DOCTOR_MEMORY_LABEL not in result["report"]["doctor_facing_response"]
+    assert result["report"]["doctor_facing_sections"]["doctor_memory"]["items"] == []
+    assert (
+        result["report"]["doctor_facing_sections"]["doctor_memory"]["summary"]
+        == "Chưa có ghi chú liên quan."
+    )
+    assert DOCTOR_MEMORY_LABEL.upper() in result["report"]["doctor_facing_response"]

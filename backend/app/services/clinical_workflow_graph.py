@@ -7,6 +7,7 @@ from langgraph.graph import END, START, StateGraph
 
 from backend.app.schemas.chat import ChatRequest
 from backend.app.services.clinical_intent import ClinicalIntent
+from backend.app.services.doctor_report_text_safety import sanitize_doctor_report_text
 
 
 MEDICAL_QUERY_KEYWORDS = (
@@ -28,6 +29,7 @@ MEDICAL_QUERY_KEYWORDS = (
     "thuoc",
     "tuong tac",
 )
+TOP_LEVEL_SAFETY_WARNING = "top_level_safety_rewrite_applied"
 
 
 def _fold_text(value: str) -> str:
@@ -244,8 +246,56 @@ class ClinicalWorkflowGraphService:
         }
 
     def _safety_check(self, state: ClinicalWorkflowState) -> dict[str, Any]:
+        draft_output = state.get("draft_output")
+        if not isinstance(draft_output, dict):
+            return {
+                "safety_status": "applied",
+                "trace": self._append_trace(state, "safety_check"),
+            }
+
+        safe_output = dict(draft_output)
+        changed = False
+
+        answer = safe_output.get("answer")
+        message = safe_output.get("message")
+        if isinstance(answer, str) and isinstance(message, str) and answer == message:
+            safe_text = sanitize_doctor_report_text(answer)
+            safe_output["answer"] = safe_text
+            safe_output["message"] = safe_text
+            changed = changed or safe_text != answer
+        else:
+            if isinstance(answer, str):
+                safe_answer = sanitize_doctor_report_text(answer)
+                safe_output["answer"] = safe_answer
+                changed = changed or safe_answer != answer
+            if isinstance(message, str):
+                safe_message = sanitize_doctor_report_text(message)
+                safe_output["message"] = safe_message
+                changed = changed or safe_message != message
+
+        report = safe_output.get("report")
+        if isinstance(report, dict):
+            doctor_facing_response = report.get("doctor_facing_response")
+            if isinstance(doctor_facing_response, str):
+                safe_doctor_facing_response = sanitize_doctor_report_text(
+                    doctor_facing_response,
+                )
+                if safe_doctor_facing_response != doctor_facing_response:
+                    safe_report = dict(report)
+                    safe_report["doctor_facing_response"] = safe_doctor_facing_response
+                    safe_output["report"] = safe_report
+                    changed = True
+
+        if changed:
+            warnings = safe_output.get("warnings")
+            if warnings is None:
+                safe_output["warnings"] = [TOP_LEVEL_SAFETY_WARNING]
+            elif isinstance(warnings, list) and TOP_LEVEL_SAFETY_WARNING not in warnings:
+                safe_output["warnings"] = [*warnings, TOP_LEVEL_SAFETY_WARNING]
+
         return {
-            "safety_status": "not_applied_skeleton",
+            "draft_output": safe_output,
+            "safety_status": "applied",
             "trace": self._append_trace(state, "safety_check"),
         }
 

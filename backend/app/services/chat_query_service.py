@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import unicodedata
 from typing import Any
 
 from backend.app.schemas.chat import ChatRequest
@@ -15,6 +14,7 @@ from backend.app.services.intent_router import (
     IntentClassification,
     IntentRouter,
 )
+from backend.app.services.gemini_chat_answer_client import GeminiChatAnswerClient
 from backend.app.services.ingredient_evidence_resolver import IngredientEvidenceResolver
 from backend.app.services.normalize_drugs_service import NormalizeDrugsService
 from backend.app.services.qdrant_retriever_service import QdrantRetrieverService
@@ -30,6 +30,13 @@ INSUFFICIENT_EVIDENCE_ANSWER = (
     "Hiện hệ thống chưa tìm thấy đủ bằng chứng phù hợp trong cơ sở dữ liệu để "
     "trả lời chắc chắn câu hỏi này. Bác sĩ/dược sĩ nên kiểm tra lại tên "
     "thuốc/hoạt chất và đối chiếu thêm với nguồn chuyên môn."
+)
+
+GEMINI_CHAT_ANSWER_FAILED = "gemini_chat_answer_failed"
+
+GEMINI_CHAT_FAILURE_ANSWER = (
+    "Hiện hệ thống chưa thể sinh câu trả lời AI từ bằng chứng đã truy xuất. "
+    "Bác sĩ/dược sĩ nên kiểm tra lại nguồn tham khảo."
 )
 
 INTERACTION_MISSING_DRUGS_ANSWER = (
@@ -50,18 +57,6 @@ TOPIC_QUERY_TYPES = {
     "hepatic": "renal_hepatic",
     "interaction": "interaction",
     "general": "general",
-}
-
-TOPIC_LABELS = {
-    "adverse_effect": "tác dụng không mong muốn",
-    "contraindication": "chống chỉ định",
-    "caution": "thận trọng và lưu ý",
-    "dosage": "liều lượng và cách dùng",
-    "pregnancy_lactation": "thai kỳ/cho con bú",
-    "renal": "chức năng thận",
-    "hepatic": "chức năng gan",
-    "interaction": "tương tác thuốc",
-    "general": "thông tin thuốc",
 }
 
 SINGLE_QUERY_TEXT = {
@@ -99,46 +94,6 @@ FORBIDDEN_REPLACEMENTS = [
     (r"kê\s+thêm", "cân nhắc phương án điều trị phù hợp"),
 ]
 
-UNSAFE_EVIDENCE_ACTION_PATTERNS = tuple(
-    re.compile(pattern, re.IGNORECASE)
-    for pattern in (
-        r"ngừng\s+dùng\s+thuốc",
-        r"ngừng\s+thuốc",
-        r"dừng\s+thuốc",
-        r"phải\s+ngừng",
-        r"cần\s+ngừng",
-        r"không\s+nên\s+dùng",
-        r"không\s+được\s+dùng",
-        r"không\s+được\s+trộn",
-        r"thăm\s+khám\s+thầy\s+thuốc",
-        r"phải\s+thăm\s+khám",
-        r"cần\s+thăm\s+khám",
-        r"tăng\s+liều",
-        r"giảm\s+liều",
-        r"đổi\s+thuốc",
-        r"thay\s+thuốc",
-        r"kê\s+thêm",
-    )
-)
-
-FALLBACK_TOPIC_SUMMARIES = {
-    "adverse_effect": (
-        "Nguồn tham khảo ghi nhận một số tác dụng không mong muốn cần được "
-        "bác sĩ/dược sĩ lưu ý khi rà soát."
-    ),
-    "interaction": (
-        "Nguồn tham khảo có thông tin liên quan đến mục tương tác thuốc; "
-        "bác sĩ/dược sĩ nên đối chiếu thêm trước khi quyết định lâm sàng."
-    ),
-}
-
-PARACETAMOL_SKIN_REACTION_SUMMARY = (
-    "Nguồn tham khảo ghi nhận một số phản ứng da nghiêm trọng hiếm gặp liên quan "
-    "đến Paracetamol. Bác sĩ/dược sĩ nên đối chiếu với biểu hiện lâm sàng và "
-    "tiền sử người bệnh khi rà soát."
-)
-
-
 def _deduplicate(values: list[str]) -> list[str]:
     output: list[str] = []
     seen: set[str] = set()
@@ -148,14 +103,6 @@ def _deduplicate(values: list[str]) -> list[str]:
         seen.add(value)
         output.append(value)
     return output
-
-
-def _clean_text(value: Any, max_length: int = 300) -> str:
-    text = unicodedata.normalize("NFC", str(value or ""))
-    text = _normalize_snippet_text(text)
-    if len(text) <= max_length:
-        return text
-    return text[:max_length].rsplit(" ", 1)[0].strip()
 
 
 def _normalize_snippet_text(text: str) -> str:
@@ -195,6 +142,32 @@ def _public_sources(chunks: list[dict[str, Any]], limit: int = 5) -> list[dict[s
     return sources
 
 
+GEMINI_EVIDENCE_CHUNK_FIELDS = (
+    "rank",
+    "slug",
+    "entity_name",
+    "section",
+    "section_title",
+    "source",
+    "title",
+    "url",
+    "text",
+)
+
+
+def _gemini_evidence_chunks(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    sanitized_chunks: list[dict[str, Any]] = []
+    for chunk in chunks:
+        sanitized_chunks.append(
+            {
+                key: chunk.get(key)
+                for key in GEMINI_EVIDENCE_CHUNK_FIELDS
+                if chunk.get(key) is not None
+            }
+        )
+    return sanitized_chunks
+
+
 class ChatQueryService:
     """Thin chat orchestration over existing normalization and retrieval services."""
 
@@ -204,12 +177,14 @@ class ChatQueryService:
         normalizer: NormalizeDrugsService | None = None,
         retriever: QdrantRetrieverService | None = None,
         ingredient_resolver: IngredientEvidenceResolver | None = None,
+        answer_client: Any | None = None,
         top_k: int = 5,
     ) -> None:
         self.intent_router = intent_router or IntentRouter()
         self.normalizer = normalizer or NormalizeDrugsService()
         self.retriever = retriever or QdrantRetrieverService()
         self.ingredient_resolver = ingredient_resolver or IngredientEvidenceResolver()
+        self.answer_client = answer_client or GeminiChatAnswerClient()
         self.top_k = top_k
 
     @staticmethod
@@ -218,150 +193,6 @@ class ChatQueryService:
         for pattern, replacement in FORBIDDEN_REPLACEMENTS:
             safe = re.sub(pattern, replacement, safe, flags=re.IGNORECASE)
         return _normalize_snippet_text(safe)
-
-    @staticmethod
-    def _is_unsafe_evidence_sentence(sentence: str) -> bool:
-        return any(
-            pattern.search(sentence) for pattern in UNSAFE_EVIDENCE_ACTION_PATTERNS
-        )
-
-    @staticmethod
-    def _is_broken_leading_fragment(sentence: str) -> bool:
-        stripped = sentence.strip()
-        if not stripped:
-            return False
-        first_char = stripped[0]
-        first_word = stripped.split(" ", 1)[0]
-        return first_char.islower() and len(first_word) <= 5
-
-    @staticmethod
-    def _limit_complete_sentences(sentences: list[str], max_length: int) -> str:
-        selected: list[str] = []
-        current_length = 0
-        for sentence in sentences:
-            sentence = _normalize_snippet_text(sentence)
-            if not sentence:
-                continue
-            next_length = current_length + len(sentence) + (1 if selected else 0)
-            if next_length > max_length:
-                break
-            selected.append(sentence)
-            current_length = next_length
-            if len(selected) == 2:
-                break
-
-        if selected:
-            return _normalize_snippet_text(" ".join(selected))
-
-        if not sentences:
-            return ""
-        first = _normalize_snippet_text(sentences[0])
-        if len(first) <= max_length:
-            return first
-        return _clean_text(first, max_length=max_length)
-
-    @staticmethod
-    def _clean_evidence_snippet(text: Any, max_length: int = 300) -> str:
-        value = unicodedata.normalize("NFC", str(text or ""))
-        if "Nội dung:" in value:
-            value = value.rsplit("Nội dung:", 1)[-1]
-        metadata_labels = (
-            "Hoạt chất:",
-            "Slug:",
-            "Mục:",
-            "Nguồn:",
-            "URL:",
-            "Nội dung:",
-        )
-        lines = []
-        for line in value.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if any(stripped.startswith(label) for label in metadata_labels):
-                continue
-            lines.append(stripped)
-        cleaned = " ".join(lines)
-        cleaned = re.sub(r"https?://\S+", "", cleaned)
-        cleaned = _normalize_snippet_text(cleaned)
-        if not cleaned:
-            return ""
-
-        raw_sentences = [
-            sentence.strip()
-            for sentence in re.split(r"(?<=[.!?])\s+", cleaned)
-            if sentence.strip()
-        ]
-        safe_sentences: list[str] = []
-        for index, sentence in enumerate(raw_sentences):
-            if index == 0 and ChatQueryService._is_broken_leading_fragment(sentence):
-                continue
-            if ChatQueryService._is_unsafe_evidence_sentence(sentence):
-                continue
-            safe_sentences.append(sentence)
-
-        return ChatQueryService._limit_complete_sentences(
-            safe_sentences,
-            max_length=max_length,
-        )
-
-    @classmethod
-    def _summary_from_chunks(
-        cls,
-        chunks: list[dict[str, Any]],
-        topic: str | None,
-        query_type: str,
-    ) -> str:
-        snippets: list[str] = []
-        removed_unsafe_text = ""
-        for chunk in chunks:
-            raw_text = str(chunk.get("text") or "")
-            if any(
-                pattern.search(raw_text)
-                for pattern in UNSAFE_EVIDENCE_ACTION_PATTERNS
-            ):
-                removed_unsafe_text = f"{removed_unsafe_text} {raw_text}".strip()
-            text = cls._clean_evidence_snippet(chunk.get("text"))
-            if text:
-                snippets.append(text)
-            if len(snippets) == 2:
-                break
-        if not snippets:
-            if topic == "adverse_effect" and cls._mentions_paracetamol_skin_reaction(
-                chunks,
-                removed_unsafe_text,
-            ):
-                return PARACETAMOL_SKIN_REACTION_SUMMARY
-            return FALLBACK_TOPIC_SUMMARIES.get(
-                topic or query_type,
-                "Nguồn tham khảo có thông tin liên quan; bác sĩ/dược sĩ nên đối chiếu với tình trạng người bệnh và nguồn tham khảo.",
-            )
-        return " ".join(snippets)
-
-    @staticmethod
-    def _mentions_paracetamol_skin_reaction(
-        chunks: list[dict[str, Any]],
-        unsafe_text: str,
-    ) -> bool:
-        haystack_parts = [unsafe_text]
-        for chunk in chunks:
-            haystack_parts.extend(
-                str(chunk.get(key) or "")
-                for key in ("slug", "entity_name", "title", "section_title", "text")
-            )
-        haystack = " ".join(haystack_parts).casefold()
-        has_paracetamol = "paracetamol" in haystack
-        has_skin_reaction = any(
-            term in haystack
-            for term in (
-                "ban",
-                "da",
-                "stevens-johnson",
-                "hoại tử biểu bì",
-                "phản ứng da",
-            )
-        )
-        return has_paracetamol and has_skin_reaction
 
     @staticmethod
     def _direct_ingredient_output(
@@ -478,6 +309,48 @@ class ChatQueryService:
             "warnings": _deduplicate([*classification.warnings, *(warnings or [])]),
         }
 
+    @staticmethod
+    def _build_answer_payload(
+        classification: IntentClassification,
+        normalized: dict[str, Any],
+        chunks: list[dict[str, Any]],
+        sources: list[dict[str, Any]],
+        fallback_drugs: list[str],
+        question: str,
+        query_type: str,
+    ) -> dict[str, Any]:
+        return {
+            "question": question,
+            "intent": classification.intent,
+            "topic": classification.topic,
+            "query_type": query_type,
+            "drug_mentions": list(fallback_drugs),
+            "normalized_drugs": list(normalized.get("medications") or []),
+            "evidence_chunks": _gemini_evidence_chunks(chunks),
+            "sources": sources,
+            "safety_rules": {
+                "no_diagnosis": True,
+                "no_prescribing": True,
+                "use_only_evidence": True,
+            },
+        }
+
+    @staticmethod
+    def _validate_answer_client_result(result: Any) -> tuple[str, list[str]]:
+        if not isinstance(result, dict):
+            raise ValueError("chat_answer_client_result_invalid")
+        answer = result.get("answer")
+        if not isinstance(answer, str) or not answer.strip():
+            raise ValueError("chat_answer_client_answer_invalid")
+        warnings = result.get("warnings", [])
+        if warnings is None:
+            warnings = []
+        if not isinstance(warnings, list) or not all(
+            isinstance(warning, str) for warning in warnings
+        ):
+            raise ValueError("chat_answer_client_warnings_invalid")
+        return answer.strip(), warnings
+
     def answer(self, request: ChatRequest) -> dict[str, Any]:
         classification = self.intent_router.classify(request.message)
 
@@ -491,7 +364,7 @@ class ChatQueryService:
             return self._answer_interaction(request.message, classification)
 
         if classification.intent == SINGLE_DRUG_QUERY:
-            return self._answer_single_drug(classification)
+            return self._answer_single_drug(request.message, classification)
 
         unknown_answer = self._sanitize_answer(OUT_OF_SCOPE_REFUSAL)
         return self._response(classification, unknown_answer)
@@ -527,7 +400,7 @@ class ChatQueryService:
         )
 
     def _answer_single_drug(
-        self, classification: IntentClassification
+        self, message: str, classification: IntentClassification
     ) -> dict[str, Any]:
         mentions = classification.drug_mentions[:1]
         if not mentions:
@@ -557,7 +430,7 @@ class ChatQueryService:
             normalized=normalized,
             evidence=evidence,
             fallback_drugs=mentions,
-            query_text=query_text,
+            query_text=message,
         )
 
     def _compose_evidence_answer(
@@ -588,33 +461,28 @@ class ChatQueryService:
         query_type = "interaction" if classification.intent == DRUG_INTERACTION_QUERY else (
             TOPIC_QUERY_TYPES.get(classification.topic or "general", "general")
         )
-        summary = self._summary_from_chunks(
-            chunks,
-            topic=classification.topic,
+        payload = self._build_answer_payload(
+            classification=classification,
+            normalized=normalized,
+            chunks=chunks,
+            sources=sources,
+            fallback_drugs=fallback_drugs,
+            question=query_text,
             query_type=query_type,
         )
-        if classification.intent == DRUG_INTERACTION_QUERY:
-            drug_a, drug_b = fallback_drugs[:2]
-            answer = (
-                "Với dữ liệu hiện có, hệ thống ghi nhận cần rà soát khả năng "
-                f"tương tác giữa {drug_a} và {drug_b}. {summary}. "
-                "Bác sĩ/dược sĩ nên đối chiếu với tình trạng người bệnh và "
-                "nguồn tham khảo trước khi quyết định lâm sàng."
+        try:
+            gemini_result = self.answer_client.answer(payload)
+            answer, answer_warnings = self._validate_answer_client_result(
+                gemini_result
             )
-        else:
-            drug = fallback_drugs[0]
-            topic = TOPIC_LABELS.get(classification.topic, TOPIC_LABELS["general"])
-            answer = (
-                "Với dữ liệu hiện có, hệ thống ghi nhận một số thông tin cần "
-                f"lưu ý về {drug} liên quan đến {topic}. {summary}. "
-                "Bác sĩ/dược sĩ nên đối chiếu với tình trạng người bệnh và "
-                "nguồn tham khảo trước khi quyết định lâm sàng."
-            )
+        except Exception:
+            answer = GEMINI_CHAT_FAILURE_ANSWER
+            answer_warnings = [GEMINI_CHAT_ANSWER_FAILED]
 
         return self._response(
             classification,
             self._sanitize_answer(answer),
             normalized_result=normalized,
             sources=sources,
-            warnings=warnings,
+            warnings=[*warnings, *answer_warnings],
         )

@@ -165,7 +165,7 @@ def test_chat_route_returns_backward_compatible_answer_fields_with_jwt(
 
     assert response.status_code == 200
     body = response.json()
-    assert {
+    assert set(body) == {
         "doctor_id",
         "message",
         "answer",
@@ -174,7 +174,7 @@ def test_chat_route_returns_backward_compatible_answer_fields_with_jwt(
         "sources",
         "warnings",
         "disclaimer",
-    }.issubset(body)
+    }
     assert body["doctor_id"] == "doctor-chat-token"
     assert body["doctor_id"] != "dev-doctor-001"
     assert body["intent"] == "single_drug_query"

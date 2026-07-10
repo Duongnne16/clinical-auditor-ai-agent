@@ -4,11 +4,14 @@ from typing import Any, Callable, Iterable
 
 from backend.app.services.doctor_memory_service import (
     DOCTOR_MEMORY_LABEL,
+    DoctorMemoryService,
 )
 from backend.app.core.config import get_settings
 from backend.app.services.doctor_report_text_safety import sanitize_doctor_report_text
 from backend.app.services.doctor_report_composer_service import (
     DoctorReportComposerService,
+    has_full_doctor_facing_sections,
+    render_doctor_facing_response_from_sections,
 )
 from backend.app.services.gemini_risk_analyzer_client import GeminiRiskAnalyzerClient
 from backend.app.services.prescription_document_parser import PrescriptionDocumentParser
@@ -145,11 +148,36 @@ class PrescriptionAuditService:
         }
 
     @staticmethod
-    def _safe_memory_note_text(note: dict[str, Any]) -> str:
-        title = str(note.get("title") or "").strip()
-        text = str(note.get("note_text") or "").strip()
-        combined = f"{title}: {text}" if title and text else title or text
-        return sanitize_doctor_report_text(combined).strip()
+    def _safe_memory_note_item(note: dict[str, Any]) -> dict[str, str] | None:
+        content = sanitize_doctor_report_text(
+            str(note.get("note_text") or note.get("content") or "").strip()
+        )
+        title = sanitize_doctor_report_text(
+            DoctorMemoryService.display_title(note.get("title"), content)
+        )
+        if not title and not content:
+            return None
+        return {
+            "title": title or "Ghi chú riêng",
+            "content": content,
+        }
+
+    @classmethod
+    def _doctor_memory_section(cls, matched_notes: list[Any]) -> dict[str, Any]:
+        items: list[dict[str, str]] = []
+        for note in matched_notes[:3]:
+            if not isinstance(note, dict):
+                continue
+            item = cls._safe_memory_note_item(note)
+            if item is not None:
+                items.append(item)
+        return {
+            "title": DOCTOR_MEMORY_LABEL.upper(),
+            "summary": "Có ghi chú liên quan từ Doctor Memory."
+            if items
+            else "Chưa có ghi chú liên quan.",
+            "items": items,
+        }
 
     @classmethod
     def _attach_doctor_memory_to_report(
@@ -160,18 +188,25 @@ class PrescriptionAuditService:
         output = dict(report)
         output["doctor_memory"] = doctor_memory
         matched_notes = doctor_memory.get("matched_notes")
-        if not isinstance(matched_notes, list) or not matched_notes:
+        if not isinstance(matched_notes, list):
+            matched_notes = []
+
+        sections = output.get("doctor_facing_sections")
+        if isinstance(sections, dict):
+            updated_sections = dict(sections)
+            updated_sections["doctor_memory"] = cls._doctor_memory_section(
+                matched_notes
+            )
+            output["doctor_facing_sections"] = updated_sections
+            if has_full_doctor_facing_sections(updated_sections):
+                output["doctor_facing_response"] = (
+                    render_doctor_facing_response_from_sections(updated_sections)
+                )
             return output
 
-        lines = [str(output.get("doctor_facing_response") or "").rstrip()]
-        lines.extend(["", f"{DOCTOR_MEMORY_LABEL}:"])
-        for note in matched_notes[:3]:
-            if not isinstance(note, dict):
-                continue
-            safe_text = cls._safe_memory_note_text(note)
-            if safe_text:
-                lines.append(f"* {safe_text}")
-        output["doctor_facing_response"] = "\n".join(line for line in lines if line is not None).strip()
+        output["doctor_facing_sections"] = {
+            "doctor_memory": cls._doctor_memory_section(matched_notes)
+        }
         return output
 
     def _retrieve_doctor_memory(

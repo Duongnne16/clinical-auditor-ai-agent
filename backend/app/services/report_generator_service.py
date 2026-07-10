@@ -82,6 +82,15 @@ def _doctor_facing_warnings(warnings: list[str]) -> list[str]:
     return _deduplicate(messages)
 
 
+def _checked_query_types(evidence_bundle: dict[str, Any] | None) -> list[str]:
+    if not isinstance(evidence_bundle, dict):
+        return []
+    query_results = evidence_bundle.get("query_results")
+    if not isinstance(query_results, dict):
+        return []
+    return _deduplicate(str(query_type) for query_type in query_results if query_type)
+
+
 class ReportGeneratorService:
     """Format validated prescription-risk analysis into an audit report.
 
@@ -278,6 +287,7 @@ class ReportGeneratorService:
         medications_requiring_review: list[dict[str, Any]],
         risk_items: list[dict[str, Any]],
         missing_information: list[str],
+        evidence_bundle: dict[str, Any] | None,
         evidence_sources: list[dict[str, Any]],
         warnings: list[str],
         errors: list[str],
@@ -304,6 +314,7 @@ class ReportGeneratorService:
             "missing_information": missing_information,
             "evidence_sources": evidence_sources,
             "source_count": len(evidence_sources),
+            "checked_query_types": _checked_query_types(evidence_bundle),
             "safety_disclaimer": SAFETY_DISCLAIMER,
             "warnings": deduped_warnings,
             "doctor_facing_warnings": _doctor_facing_warnings(deduped_warnings),
@@ -340,6 +351,7 @@ class ReportGeneratorService:
                 medications_requiring_review=medications_requiring_review,
                 risk_items=[],
                 missing_information=[],
+                evidence_bundle=evidence_bundle,
                 evidence_sources=evidence_sources,
                 warnings=[],
                 errors=["invalid_risk_analysis"],
@@ -405,6 +417,7 @@ class ReportGeneratorService:
             medications_requiring_review=medications_requiring_review,
             risk_items=risk_items_with_evidence,
             missing_information=missing_information,
+            evidence_bundle=evidence_bundle,
             evidence_sources=evidence_sources,
             warnings=warnings,
             errors=errors,

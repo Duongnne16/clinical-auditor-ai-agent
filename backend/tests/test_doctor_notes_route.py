@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.core.security import create_access_token, hash_password
@@ -198,6 +198,31 @@ def test_create_doctor_note_ignores_body_doctor_id(
     assert fake.save_calls[0]["doctor_id"] == "doctor-token"
 
 
+def test_create_doctor_note_invalid_content_returns_422_without_sqlite_row(
+    doctor_notes_client: TestClient,
+) -> None:
+    user = _create_user(doctor_notes_client, doctor_id="doctor-invalid")
+    fake = FakeDoctorMemoryService()
+    _override_memory(fake)
+
+    response = doctor_notes_client.post(
+        "/api/v1/doctor-notes",
+        headers=_auth_headers(user),
+        json={
+            "content": "hẹ hẹ hẹ",
+            "note_text": "hẹ hẹ hẹ",
+            "title": "Ghi chú đơn thuốc",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "Ghi" in response.json()["detail"]
+    assert fake.save_calls == []
+    testing_session = doctor_notes_client.testing_session  # type: ignore[attr-defined]
+    with testing_session() as session:
+        assert list(session.scalars(select(DoctorNote))) == []
+
+
 def test_search_doctor_notes_uses_doctor_id_from_token(
     doctor_notes_client: TestClient,
 ) -> None:
@@ -267,11 +292,11 @@ def test_create_doctor_note_survives_memory_failure(
     response = doctor_notes_client.post(
         "/api/v1/doctor-notes",
         headers=_auth_headers(user),
-        json={"content": "SQLite note survives"},
+        json={"content": "Theo dõi men gan khi dùng Rosuvastatin."},
     )
 
     assert response.status_code == 201
-    assert response.json()["content"] == "SQLite note survives"
+    assert response.json()["content"] == "Theo dõi men gan khi dùng Rosuvastatin."
     assert len(fake.save_calls) == 1
 
 

@@ -5,6 +5,8 @@ from typing import Any
 from backend.app.api.routes.chat import get_chat_query_service
 from backend.app.schemas.chat import ChatRequest
 from backend.app.services.chat_query_service import (
+    GEMINI_CHAT_ANSWER_FAILED,
+    GEMINI_CHAT_FAILURE_ANSWER,
     OUT_OF_SCOPE_REFUSAL,
     ChatQueryService,
 )
@@ -56,7 +58,11 @@ class FakeNormalizer:
 
 
 class FakeRetriever:
-    def __init__(self, chunks: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self,
+        chunks: list[dict[str, Any]] | None = None,
+        warnings: list[str] | None = None,
+    ) -> None:
         self.chunks = chunks if chunks is not None else [
             {
                 "chunk_id": "hidden-id",
@@ -71,6 +77,7 @@ class FakeRetriever:
                 "text": "Bằng chứng mô tả thông tin cần rà soát khi phối hợp.",
             }
         ]
+        self.warnings = warnings or []
         self.calls: list[dict[str, Any]] = []
 
     def retrieve_for_normalized_result(
@@ -78,7 +85,7 @@ class FakeRetriever:
     ) -> dict[str, Any]:
         kwargs["normalized_result"] = normalized_result
         self.calls.append(kwargs)
-        return {"chunks": self.chunks, "warnings": []}
+        return {"chunks": self.chunks, "warnings": self.warnings}
 
 
 class FakeIngredientResolver:
@@ -99,14 +106,48 @@ class FakeIngredientResolver:
         }
 
 
+class FakeAnswerClient:
+    def __init__(
+        self,
+        response: str = "Bác sĩ/dược sĩ nên đối chiếu bằng chứng đã truy xuất.",
+        warnings: list[str] | None = None,
+        raises: bool = False,
+    ) -> None:
+        self.response = response
+        self.warnings = warnings or []
+        self.raises = raises
+        self.payloads: list[dict[str, Any]] = []
+
+    def answer(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.payloads.append(payload)
+        if self.raises:
+            raise RuntimeError("Gemini failed")
+        return {"answer": self.response, "warnings": self.warnings}
+
+
+class FakeRawAnswerClient:
+    def __init__(self, result: Any) -> None:
+        self.result = result
+        self.payloads: list[dict[str, Any]] = []
+
+    def answer(self, payload: dict[str, Any]) -> Any:
+        self.payloads.append(payload)
+        return self.result
+
+
 def _service(
     normalizer: FakeNormalizer | None = None,
     retriever: FakeRetriever | None = None,
+    answer_client: Any | None = None,
 ) -> ChatQueryService:
     return ChatQueryService(
         normalizer=normalizer or FakeNormalizer(),  # type: ignore[arg-type]
         retriever=retriever or FakeRetriever(),  # type: ignore[arg-type]
         ingredient_resolver=FakeIngredientResolver(),  # type: ignore[arg-type]
+        answer_client=answer_client
+        or FakeAnswerClient(
+            response="Bác sĩ/dược sĩ nên đối chiếu bằng chứng đã truy xuất."
+        ),  # type: ignore[arg-type]
     )
 
 
@@ -136,6 +177,68 @@ def test_interaction_query_normalizes_retrieves_and_answers() -> None:
     assert retriever.calls[0]["query_text"] == "Omeprazole Clopidogrel tương tác thuốc"
     assert "hidden-id" not in result["answer"]
     assert "chunk_id" not in result["sources"][0]
+
+
+def test_answer_client_called_with_grounded_payload_when_evidence_exists() -> None:
+    normalizer = FakeNormalizer()
+    retriever = FakeRetriever()
+    retriever.chunks[0]["vector_score"] = 0.91
+    retriever.chunks[0]["rerank_score"] = 1.12
+    retriever.chunks[0]["source_type"] = "internal"
+    answer_client = FakeAnswerClient(
+        response="Gemini grounded interaction answer.",
+        warnings=["gemini_low_confidence"],
+    )
+    question = "Omeprazole c\u00f3 t\u01b0\u01a1ng t\u00e1c v\u1edbi Clopidogrel kh\u00f4ng?"
+
+    result = _service(normalizer, retriever, answer_client).answer(
+        ChatRequest(message=question)
+    )
+
+    assert result["answer"] == "Gemini grounded interaction answer."
+    assert result["intent"] == "drug_interaction_query"
+    assert "gemini_low_confidence" in result["warnings"]
+    payload = answer_client.payloads[0]
+    assert payload["question"] == question
+    assert payload["intent"] == "drug_interaction_query"
+    assert payload["topic"] == "interaction"
+    assert payload["query_type"] == "interaction"
+    assert payload["drug_mentions"] == ["Omeprazole", "Clopidogrel"]
+    assert [drug["raw_name"] for drug in payload["normalized_drugs"]] == [
+        "Omeprazole",
+        "Clopidogrel",
+    ]
+    evidence_chunk = payload["evidence_chunks"][0]
+    assert evidence_chunk["rank"] == 1
+    assert evidence_chunk["slug"] == "omeprazole"
+    assert evidence_chunk["text"] == retriever.chunks[0]["text"]
+    for internal_field in (
+        "chunk_id",
+        "vector_score",
+        "rerank_score",
+        "source_type",
+    ):
+        assert internal_field not in evidence_chunk
+    assert payload["sources"][0]["slug"] == "omeprazole"
+    assert "chunk_id" not in payload["sources"][0]
+    assert payload["safety_rules"] == {
+        "no_diagnosis": True,
+        "no_prescribing": True,
+        "use_only_evidence": True,
+    }
+
+
+def test_single_drug_payload_uses_original_question_not_retriever_query_text() -> None:
+    answer_client = FakeAnswerClient(response="Gemini grounded single drug answer.")
+    question = "Paracetamol c\u00f3 t\u00e1c d\u1ee5ng ph\u1ee5 g\u00ec?"
+
+    _service(answer_client=answer_client).answer(ChatRequest(message=question))
+
+    payload = answer_client.payloads[0]
+    assert payload["question"] == question
+    assert payload["intent"] == "single_drug_query"
+    assert payload["query_type"] == "adverse_effect"
+    assert payload["drug_mentions"] == ["Paracetamol"]
 
 
 def test_interaction_query_ignores_generic_nhau_mention() -> None:
@@ -214,7 +317,95 @@ def test_insufficient_evidence_returns_no_guess_answer() -> None:
     assert "insufficient_evidence" in result["warnings"]
 
 
+def test_insufficient_evidence_does_not_call_answer_client() -> None:
+    answer_client = FakeAnswerClient()
+
+    result = _service(
+        retriever=FakeRetriever(chunks=[]),
+        answer_client=answer_client,
+    ).answer(ChatRequest(message="Paracetamol cÃ³ tÃ¡c dá»¥ng phá»¥ gÃ¬?"))
+
+    assert result["intent"] == "single_drug_query"
+    assert "insufficient_evidence" in result["warnings"]
+    assert answer_client.payloads == []
+
+
+def test_answer_client_failure_returns_safe_answer_without_deterministic_fallback() -> None:
+    answer_client = FakeAnswerClient(raises=True)
+
+    result = _service(answer_client=answer_client).answer(
+        ChatRequest(message="Paracetamol cÃ³ tÃ¡c dá»¥ng phá»¥ gÃ¬?")
+    )
+
+    assert result["answer"] == GEMINI_CHAT_FAILURE_ANSWER
+    assert GEMINI_CHAT_ANSWER_FAILED in result["warnings"]
+    assert result["sources"]
+    assert result["normalized_drugs"]
+    assert "Paracetamol" not in result["answer"]
+    assert "Vá»›i dá»¯ liá»‡u" not in result["answer"]
+
+
+def test_invalid_answer_client_outputs_return_safe_failure() -> None:
+    invalid_outputs = [
+        {},
+        {"answer": ""},
+        {"answer": 123, "warnings": []},
+        {"answer": "Valid answer.", "warnings": "bad"},
+        {"answer": "Valid answer.", "warnings": ["ok", 123]},
+        "not-a-dict",
+        None,
+    ]
+
+    for invalid_output in invalid_outputs:
+        answer_client = FakeRawAnswerClient(invalid_output)
+        result = _service(answer_client=answer_client).answer(
+            ChatRequest(message="Paracetamol có tác dụng phụ gì?")
+        )
+
+        assert result["answer"] == GEMINI_CHAT_FAILURE_ANSWER
+        assert GEMINI_CHAT_ANSWER_FAILED in result["warnings"]
+        assert answer_client.payloads
+
+
+def test_gemini_warnings_are_merged_after_existing_warnings_and_deduplicated() -> None:
+    retriever = FakeRetriever(warnings=["retriever_warning", "shared_warning"])
+    answer_client = FakeAnswerClient(
+        warnings=["shared_warning", "gemini_warning"]
+    )
+
+    result = _service(retriever=retriever, answer_client=answer_client).answer(
+        ChatRequest(message="Paracetamol cÃ³ tÃ¡c dá»¥ng phá»¥ gÃ¬?")
+    )
+
+    assert result["warnings"] == [
+        "retriever_warning",
+        "shared_warning",
+        "gemini_warning",
+    ]
+
+
+def test_chat_query_service_inner_response_shape_excludes_public_route_fields() -> None:
+    result = _service().answer(
+        ChatRequest(message="Paracetamol cÃ³ tÃ¡c dá»¥ng phá»¥ gÃ¬?")
+    )
+
+    assert set(result) == {
+        "message",
+        "answer",
+        "intent",
+        "normalized_drugs",
+        "sources",
+        "warnings",
+    }
+    assert "doctor_memory" not in result
+    assert "doctor_id" not in result
+    assert "disclaimer" not in result
+
+
 def test_generated_answer_filters_forbidden_phrases() -> None:
+    answer_client = FakeAnswerClient(
+        response="Không an toàn, ngừng thuốc, tăng liều, giảm liều, đổi thuốc."
+    )
     result = _service(
         retriever=FakeRetriever(
             chunks=[
@@ -227,7 +418,8 @@ def test_generated_answer_filters_forbidden_phrases() -> None:
                     ),
                 }
             ]
-        )
+        ),
+        answer_client=answer_client,
     ).answer(ChatRequest(message="Paracetamol có tác dụng phụ gì?"))
 
     folded = result["answer"].casefold()
@@ -271,8 +463,7 @@ def test_paracetamol_adverse_effect_directive_is_rewritten_for_review() -> None:
         "thay thuốc",
     ]:
         assert phrase not in folded
-    assert "Bác sĩ/dược sĩ" in result["answer"]
-    assert "rà soát" in result["answer"] or "đối chiếu" in result["answer"]
+    assert result["answer"]
     assert result["sources"]
     assert result["sources"][0]["slug"] == "paracetamol"
 
@@ -314,7 +505,7 @@ def test_answer_strips_raw_evidence_metadata() -> None:
         ChatRequest(message="Omeprazole có tương tác với Clopidogrel không?")
     )
 
-    assert "Nội dung lâm sàng cần giữ lại" in result["answer"]
+    assert result["answer"]
     for leaked in ["Slug:", "Mục:", "Nguồn:", "URL:", "Nội dung:", "chunk_id"]:
         assert leaked not in result["answer"]
     assert "https://example.test" not in result["answer"]

@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,8 +13,11 @@ from backend.app.schemas.doctor_note import (
     DoctorNoteSearchItem,
 )
 from backend.app.services.doctor_memory_service import (
+    DoctorMemoryValidationError,
     DoctorMemoryService,
+    NOTE_VALIDATION_ERROR_MESSAGE,
     get_doctor_memory_service,
+    validate_doctor_note_content,
 )
 
 router = APIRouter(prefix="/doctor-notes", tags=["doctor-notes"])
@@ -28,6 +31,14 @@ def create_doctor_note(
     db: Session = Depends(get_db),
     memory_service: DoctorMemoryService = Depends(get_doctor_memory_service),
 ) -> DoctorNote:
+    try:
+        validate_doctor_note_content(payload.note_text or payload.content or "")
+    except DoctorMemoryValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc) or NOTE_VALIDATION_ERROR_MESSAGE,
+        ) from exc
+
     note = DoctorNote(doctor_id=doctor_id, content=payload.content or "")
     db.add(note)
     db.commit()
@@ -48,6 +59,13 @@ def create_doctor_note(
             priority=payload.priority,
             created_at=note.created_at.isoformat() if note.created_at else None,
         )
+    except DoctorMemoryValidationError as exc:
+        db.delete(note)
+        db.commit()
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc) or NOTE_VALIDATION_ERROR_MESSAGE,
+        ) from exc
     except Exception:
         logger.exception("doctor_memory_save_failed")
         pass

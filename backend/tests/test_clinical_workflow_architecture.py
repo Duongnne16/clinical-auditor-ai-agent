@@ -391,9 +391,41 @@ def test_safety_check_does_not_rewrite_payload() -> None:
         }
     )
 
-    assert state["safety_status"] == "not_applied_skeleton"
+    assert state["safety_status"] == "applied"
     assert state["draft_output"] == payload
     assert state["final_result"] == payload
+
+
+def test_chat_graph_run_returns_public_payload_without_internal_fields() -> None:
+    payload = {
+        "message": "grounded chat answer",
+        "answer": "grounded chat answer",
+        "intent": "single_drug_query",
+        "normalized_drugs": [],
+        "sources": [],
+        "warnings": [],
+    }
+    service = ClinicalWorkflowGraphService(
+        chat_query_service=FakeChatQueryService(payload)
+    )
+
+    result = service.run(
+        {
+            "request_type": "chat",
+            "input_text": "Paracetamol adverse effects",
+            "trace": [],
+        }
+    )
+
+    assert result == payload
+    for internal_field in (
+        "ClinicalIntent",
+        "trace",
+        "selected_intent",
+        "final_result",
+        "doctor_memory",
+    ):
+        assert internal_field not in result
 
 
 def test_prescription_audit_service_does_not_import_clinical_workflow_graph() -> None:

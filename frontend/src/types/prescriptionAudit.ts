@@ -81,6 +81,27 @@ export type RiskItem = {
   evidence?: EvidenceItem[] | null
 }
 
+export type DoctorFacingSectionItem = {
+  title?: string | null
+  severity?: string | null
+  content?: string | null
+}
+
+export type DoctorFacingSection = {
+  title?: string | null
+  summary?: string | null
+  content?: string | null
+  items?: DoctorFacingSectionItem[] | null
+}
+
+export type DoctorFacingSections = {
+  prescription_check?: DoctorFacingSection | null
+  interaction_check?: DoctorFacingSection | null
+  doctor_memory?: DoctorFacingSection | null
+  safety_note?: DoctorFacingSection | null
+  [key: string]: DoctorFacingSection | null | undefined
+}
+
 export type Report = {
   status?: string | null
   overall_risk_level?: RiskLevel | string | null
@@ -93,6 +114,7 @@ export type Report = {
   evidence_sources?: EvidenceItem[] | null
   safety_disclaimer?: string | null
   doctor_facing_response?: string | null
+  doctor_facing_sections?: DoctorFacingSections | null
   doctor_facing_warnings?: string[] | null
   doctor_memory?: DoctorMemoryResponse | null
   warnings?: string[] | null

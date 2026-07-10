@@ -29,6 +29,10 @@ const noteTitle = (note: DoctorMemoryNote): string =>
 const noteText = (note: DoctorMemoryNote): string =>
   note.note_text?.trim() || note.content?.trim() || ''
 
+const MIN_LIGHTWEIGHT_NOTE_LENGTH = 16
+const NOTE_VALIDATION_MESSAGE =
+  'Ghi chÃº quÃ¡ ngáº¯n hoáº·c chÆ°a Ä‘á»§ ná»™i dung chuyÃªn mÃ´n Ä‘á»ƒ lÆ°u.'
+
 const formatDate = (value?: string | null): string => {
   if (!value) {
     return ''
@@ -139,6 +143,11 @@ export default function DoctorMemoryPanel({
     if (!latestAuditResult || !canSave) {
       return
     }
+    if (trimmedNote.length < MIN_LIGHTWEIGHT_NOTE_LENGTH) {
+      setStatusMessage('')
+      setErrorMessage(NOTE_VALIDATION_MESSAGE)
+      return
+    }
 
     const payload = buildDoctorNotePayload(latestAuditResult, trimmedNote)
     setIsSaving(true)
@@ -162,8 +171,11 @@ export default function DoctorMemoryPanel({
       })
       setNoteTextValue('')
       setStatusMessage('Đã lưu ghi chú.')
-    } catch {
+    } catch (error) {
       setErrorMessage('Không lưu được ghi chú. Vui lòng thử lại.')
+      if (error instanceof Error && error.message) {
+        setErrorMessage(error.message)
+      }
     } finally {
       setIsSaving(false)
     }

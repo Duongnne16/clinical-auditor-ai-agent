@@ -17,6 +17,17 @@ from backend.app.services.report_generator_service import SAFETY_DISCLAIMER
 
 GEMINI_COMPOSER_FAILED_WARNING = "gemini_doctor_report_composer_failed"
 GEMINI_COMPOSER_SAFETY_WARNING = "gemini_doctor_report_composer_safety_fallback"
+DOCTOR_FACING_SECTION_ORDER = (
+    "prescription_check",
+    "interaction_check",
+    "doctor_memory",
+    "safety_note",
+)
+FULL_DOCTOR_FACING_SECTION_KEYS = set(DOCTOR_FACING_SECTION_ORDER)
+NO_INTERACTION_WARNING = (
+    "Dựa trên bằng chứng truy xuất hiện có, chưa ghi nhận tương tác thuốc-thuốc "
+    "cần cảnh báo giữa các thuốc trong đơn."
+)
 
 SEVERITY_LABELS = {
     "high": "Cao",
@@ -306,6 +317,7 @@ def build_composer_payload(report: dict[str, Any]) -> dict[str, Any]:
         )
         risk_items.append(
             {
+                "risk_type": _text(item.get("risk_type")) or "general",
                 "severity": _severity_label(item.get("severity")),
                 "title": _text(item.get("title")) or "Điểm cần lưu ý",
                 "explanation": _text(item.get("explanation")),
@@ -344,6 +356,13 @@ def build_composer_payload(report: dict[str, Any]) -> dict[str, Any]:
             report.get("patient_context") if isinstance(report.get("patient_context"), dict) else None,
         ),
         "medications_requiring_review": medications_requiring_review,
+        "checked_query_types": [
+            str(query_type)
+            for query_type in report.get("checked_query_types", [])
+            if query_type
+        ]
+        if isinstance(report.get("checked_query_types"), list)
+        else [],
         "disclaimer": _text(report.get("safety_disclaimer")) or SAFETY_DISCLAIMER,
     }
 
@@ -351,49 +370,151 @@ def build_composer_payload(report: dict[str, Any]) -> dict[str, Any]:
 def _combine_finding_text(item: dict[str, Any]) -> str:
     parts = [
         _text(item.get("explanation")),
-        _text(item.get("recommendation")),
     ]
     text = " ".join(part.rstrip(".") for part in parts if part).strip()
     if not text:
         return ""
-    if item.get("evidence_sources"):
-        text = f"{text}. Có nguồn tham khảo kèm theo bên dưới."
-    elif not text.endswith("."):
+    if not text.endswith("."):
         text = f"{text}."
     return text
 
 
-def _deterministic_response_from_payload(payload: dict[str, Any]) -> str:
-    lines = [
-        "Kết quả kiểm tra đơn thuốc",
-        "",
-        (
-            "Hệ thống đã rà soát đơn thuốc dựa trên dữ liệu hiện có và ghi nhận "
-            "một số điểm cần bác sĩ/dược sĩ xem xét thêm."
+def _section_item(item: dict[str, Any]) -> dict[str, str]:
+    return {
+        "title": sanitize_doctor_report_text(
+            _text(item.get("title")) or "Điểm cần lưu ý"
         ),
-        "",
-        f"{payload.get('review_priority_label')}: {payload.get('review_priority') or 'Cần bổ sung thông tin'}.",
-    ]
+        "severity": sanitize_doctor_report_text(_text(item.get("severity"))),
+        "content": sanitize_doctor_report_text(_combine_finding_text(item)),
+    }
 
+
+def _risk_section_items(
+    risk_items: list[dict[str, Any]],
+    *,
+    interaction: bool,
+) -> list[dict[str, str]]:
+    output: list[dict[str, str]] = []
+    for item in risk_items:
+        is_interaction = _text(item.get("risk_type")) == "interaction"
+        if is_interaction != interaction:
+            continue
+        output.append(_section_item(item))
+    return output
+
+
+def build_doctor_facing_sections(
+    payload: dict[str, Any],
+    existing_sections: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     risk_items = _as_dict_list(payload.get("risk_items"))
-    lines.append("")
-    if risk_items:
-        for index, item in enumerate(risk_items, start=1):
-            lines.append(f"{index}. {item.get('title') or 'Điểm cần lưu ý'}")
-            finding_text = _combine_finding_text(item)
-            if finding_text:
-                lines.append(f"   {finding_text}")
+    checked_query_types = {
+        str(query_type) for query_type in payload.get("checked_query_types", [])
+    }
+    prescription_items = _risk_section_items(risk_items, interaction=False)
+    interaction_items = _risk_section_items(risk_items, interaction=True)
+
+    if prescription_items:
+        prescription_summary = (
+            f"Hệ thống ghi nhận {len(prescription_items)} điểm cần lưu ý."
+        )
     else:
-        lines.append(
-            "Chưa ghi nhận phát hiện có bằng chứng phù hợp trong dữ liệu hiện có."
+        prescription_summary = (
+            "Trong phạm vi dữ liệu đã truy xuất, hệ thống chưa ghi nhận điểm cần "
+            "bác sĩ/dược sĩ rà soát ngoài nhóm tương tác thuốc-thuốc."
+        )
+    missing_information = [
+        sanitize_doctor_report_text(str(item))
+        for item in payload.get("missing_information", [])
+        if item
+    ]
+    if missing_information:
+        prescription_summary = (
+            f"{prescription_summary} Thông tin cần bổ sung: "
+            f"{'; '.join(_deduplicate(missing_information))}."
         )
 
-    missing_information = payload.get("missing_information")
-    if isinstance(missing_information, list) and missing_information:
-        lines.extend(["", "Thông tin cần xác nhận:"])
-        lines.extend(f"* {item}" for item in missing_information if item)
+    if interaction_items:
+        interaction_summary = (
+            f"Hệ thống ghi nhận {len(interaction_items)} điểm cần lưu ý liên quan "
+            "tương tác thuốc-thuốc."
+        )
+    elif "interaction" in checked_query_types:
+        interaction_summary = NO_INTERACTION_WARNING
+    else:
+        interaction_summary = (
+            "Chưa có tín hiệu kiểm tra tương tác thuốc-thuốc trong lần rà soát này."
+        )
 
-    lines.extend(["", f"Lưu ý: {_text(payload.get('disclaimer')) or SAFETY_DISCLAIMER}"])
+    sections: dict[str, Any] = {
+        "prescription_check": {
+            "title": "KẾT QUẢ KIỂM TRA ĐƠN THUỐC",
+            "summary": sanitize_doctor_report_text(prescription_summary),
+            "items": prescription_items,
+        },
+        "interaction_check": {
+            "title": "KIỂM TRA TƯƠNG TÁC GIỮA CÁC THUỐC TRONG ĐƠN",
+            "summary": sanitize_doctor_report_text(interaction_summary),
+            "items": interaction_items,
+        },
+        "doctor_memory": {
+            "title": "GHI CHÚ RIÊNG CỦA BÁC SĨ",
+            "summary": "Chưa có ghi chú liên quan.",
+            "items": [],
+        },
+        "safety_note": {
+            "title": "LƯU Ý AN TOÀN",
+            "content": sanitize_doctor_report_text(
+                _text(payload.get("disclaimer")) or SAFETY_DISCLAIMER
+            ),
+        },
+    }
+
+    if isinstance(existing_sections, dict):
+        for key, section in existing_sections.items():
+            if key not in sections:
+                sections[key] = section
+        existing_memory = existing_sections.get("doctor_memory")
+        if isinstance(existing_memory, dict) and existing_memory.get("items"):
+            sections["doctor_memory"] = existing_memory
+    return sections
+
+
+def has_full_doctor_facing_sections(sections: Any) -> bool:
+    return isinstance(sections, dict) and FULL_DOCTOR_FACING_SECTION_KEYS <= set(
+        sections
+    )
+
+
+def render_doctor_facing_response_from_sections(sections: dict[str, Any]) -> str:
+    lines: list[str] = []
+    for section_key in DOCTOR_FACING_SECTION_ORDER:
+        section = sections.get(section_key)
+        if not isinstance(section, dict):
+            continue
+        title = _text(section.get("title"))
+        summary = _text(section.get("summary"))
+        content = _text(section.get("content"))
+        items = _as_dict_list(section.get("items"))
+
+        if title:
+            lines.extend([title, ""])
+        if summary:
+            lines.extend([summary, ""])
+        if content:
+            lines.extend([content, ""])
+        for index, item in enumerate(items, start=1):
+            item_title = _text(item.get("title")) or "Điểm cần lưu ý"
+            severity = _text(item.get("severity"))
+            item_content = _text(item.get("content"))
+            heading = f"{index}. {item_title}"
+            if severity:
+                heading = f"{heading} ({severity})"
+            lines.append(heading)
+            if item_content:
+                lines.append(f"   {item_content}")
+            lines.append("")
+
     return sanitize_doctor_report_text("\n".join(lines).strip())
 
 
@@ -419,23 +540,27 @@ class DoctorReportComposerService:
         report["warnings"] = _deduplicate([*warnings, warning])
         return report
 
-    def _fallback(self, report: dict[str, Any]) -> str:
-        return _deterministic_response_from_payload(build_composer_payload(report))
-
     def compose(self, report: dict[str, Any]) -> dict[str, Any]:
         output = copy.deepcopy(report) if isinstance(report, dict) else {}
+        payload = build_composer_payload(output)
+        existing_sections = output.get("doctor_facing_sections")
+        sections = build_doctor_facing_sections(
+            payload,
+            existing_sections if isinstance(existing_sections, dict) else None,
+        )
+        output["doctor_facing_sections"] = sections
+        deterministic_response = render_doctor_facing_response_from_sections(sections)
 
         if not self.enabled:
-            output["doctor_facing_response"] = self._fallback(output)
+            output["doctor_facing_response"] = deterministic_response
             return output
 
-        payload = build_composer_payload(output)
         try:
             client = self.gemini_client_factory()
             response = client.compose(payload)
             doctor_text = str(response["doctor_facing_response"]).strip()
         except Exception:
-            output["doctor_facing_response"] = self._fallback(output)
+            output["doctor_facing_response"] = deterministic_response
             return self._with_warning(output, GEMINI_COMPOSER_FAILED_WARNING)
 
         if (
@@ -443,10 +568,10 @@ class DoctorReportComposerService:
             or not doctor_text.startswith("Kết quả kiểm tra đơn thuốc")
             or _text(payload.get("disclaimer")) not in doctor_text
         ):
-            output["doctor_facing_response"] = self._fallback(output)
+            output["doctor_facing_response"] = deterministic_response
             return self._with_warning(output, GEMINI_COMPOSER_SAFETY_WARNING)
 
-        output["doctor_facing_response"] = doctor_text
+        output["doctor_facing_response"] = deterministic_response
         return output
 
     def get_stats(self) -> dict[str, Any]:

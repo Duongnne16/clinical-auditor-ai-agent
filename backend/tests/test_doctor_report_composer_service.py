@@ -10,6 +10,7 @@ from backend.app.core.config import get_settings
 from backend.app.services.doctor_report_composer_service import (
     GEMINI_COMPOSER_FAILED_WARNING,
     GEMINI_COMPOSER_SAFETY_WARNING,
+    NO_INTERACTION_WARNING,
     DoctorReportComposerService,
     build_composer_payload,
 )
@@ -35,6 +36,7 @@ def _report() -> dict[str, Any]:
         "summary": "Mức nguy cơ tổng quan: high. Cần rà soát theo bối cảnh lâm sàng.",
         "risk_items": [
             {
+                "risk_type": "renal_hepatic",
                 "severity": "high",
                 "title": "Metformin và suy thận",
                 "explanation": "eGFR thấp nên cần rà soát sử dụng metformin.",
@@ -70,6 +72,7 @@ def _report() -> dict[str, Any]:
         ],
         "warnings": ["drug_mapping_not_found"],
         "errors": ["technical_error"],
+        "checked_query_types": ["renal_hepatic", "interaction"],
         "safety_disclaimer": DISCLAIMER,
     }
 
@@ -91,7 +94,15 @@ def test_disabled_composer_generates_response_without_gemini_warning() -> None:
     report = _report()
     result = DoctorReportComposerService(enabled=False).compose(report)
 
-    assert result["doctor_facing_response"].startswith("Kết quả kiểm tra đơn thuốc")
+    assert result["doctor_facing_response"].startswith(
+        result["doctor_facing_sections"]["prescription_check"]["title"]
+    )
+    assert set(result["doctor_facing_sections"]) >= {
+        "prescription_check",
+        "interaction_check",
+        "doctor_memory",
+        "safety_note",
+    }
     assert "Mức nguy cơ tổng quan" not in result["doctor_facing_response"]
     assert " high" not in result["doctor_facing_response"].casefold()
     assert " moderate" not in result["doctor_facing_response"].casefold()
@@ -134,6 +145,8 @@ def test_build_composer_payload_excludes_technical_internals() -> None:
     serialized = json.dumps(payload, ensure_ascii=False)
 
     assert payload["review_priority"] == "Cao"
+    assert payload["checked_query_types"] == ["renal_hepatic", "interaction"]
+    assert payload["risk_items"][0]["risk_type"] == "renal_hepatic"
     assert payload["risk_items"][0]["severity"] == "Cao"
     assert "chunk-1" not in serialized
     assert "drug_mapping_not_found" not in serialized
@@ -150,12 +163,11 @@ def test_deterministic_fallback_uses_natural_opening_without_raw_summary() -> No
     result = DoctorReportComposerService(enabled=False).compose(_report())
     text = result["doctor_facing_response"]
 
-    assert text.startswith("Kết quả kiểm tra đơn thuốc")
-    assert (
-        "Hệ thống đã rà soát đơn thuốc dựa trên dữ liệu hiện có và ghi nhận "
-        "một số điểm cần bác sĩ/dược sĩ xem xét thêm."
-    ) in text
-    assert "Mức ưu tiên rà soát: Cao." in text
+    assert text.startswith(result["doctor_facing_sections"]["prescription_check"]["title"])
+    assert "Hệ thống ghi nhận 1 điểm cần lưu ý" in text
+    assert "LƯU Ý AN TOÀN" in text
+    assert DISCLAIMER in text
+    assert "Lưu ý:" not in text
     assert "Mức nguy cơ tổng quan" not in text
 
 
@@ -172,7 +184,10 @@ def test_enabled_composer_uses_safe_gemini_response() -> None:
         enabled=True, gemini_client_factory=lambda: client
     ).compose(_report())
 
-    assert result["doctor_facing_response"] == response
+    assert result["doctor_facing_response"] != response
+    assert result["doctor_facing_response"].startswith(
+        result["doctor_facing_sections"]["prescription_check"]["title"]
+    )
     assert client.payloads
     assert GEMINI_COMPOSER_FAILED_WARNING not in result["warnings"]
 
@@ -182,7 +197,9 @@ def test_enabled_composer_failure_falls_back_with_warning() -> None:
         enabled=True, gemini_client_factory=lambda: FakeGeminiClient(raises=True)
     ).compose(_report())
 
-    assert result["doctor_facing_response"].startswith("Kết quả kiểm tra đơn thuốc")
+    assert result["doctor_facing_response"].startswith(
+        result["doctor_facing_sections"]["prescription_check"]["title"]
+    )
     assert GEMINI_COMPOSER_FAILED_WARNING in result["warnings"]
 
 
@@ -197,7 +214,9 @@ def test_enabled_composer_safety_violation_falls_back_with_warning() -> None:
         gemini_client_factory=lambda: FakeGeminiClient(response=unsafe_response),
     ).compose(_report())
 
-    assert result["doctor_facing_response"].startswith("Kết quả kiểm tra đơn thuốc")
+    assert result["doctor_facing_response"].startswith(
+        result["doctor_facing_sections"]["prescription_check"]["title"]
+    )
     assert GEMINI_COMPOSER_SAFETY_WARNING in result["warnings"]
     assert "đơn thuốc an toàn" not in result["doctor_facing_response"].casefold()
     assert "dùng được" not in result["doctor_facing_response"].casefold()
@@ -243,7 +262,80 @@ def test_deterministic_fallback_avoids_form_labels_and_long_source_repetition() 
     assert "Nội dung đánh giá:" not in text
     assert "Gợi ý rà soát:" not in text
     assert text.count("Trung Tâm Thuốc / Dược thư Quốc gia Việt Nam") <= 1
-    assert "Có nguồn tham khảo kèm theo bên dưới." in text
+    assert "Có nguồn tham khảo kèm theo bên dưới." not in text
+
+
+def test_composer_adds_structured_sections_and_safety_note() -> None:
+    result = DoctorReportComposerService(enabled=False).compose(_report())
+    sections = result["doctor_facing_sections"]
+
+    assert set(sections) >= {
+        "prescription_check",
+        "interaction_check",
+        "doctor_memory",
+        "safety_note",
+    }
+    assert sections["prescription_check"]["title"] == "KẾT QUẢ KIỂM TRA ĐƠN THUỐC"
+    assert (
+        sections["interaction_check"]["title"]
+        == "KIỂM TRA TƯƠNG TÁC GIỮA CÁC THUỐC TRONG ĐƠN"
+    )
+    assert sections["doctor_memory"] == {
+        "title": "GHI CHÚ RIÊNG CỦA BÁC SĨ",
+        "summary": "Chưa có ghi chú liên quan.",
+        "items": [],
+    }
+    assert sections["safety_note"]["title"] == "LƯU Ý AN TOÀN"
+    assert sections["safety_note"]["content"] == result["safety_disclaimer"]
+    assert "LƯU Ý AN TOÀN" in result["doctor_facing_response"]
+    assert result["safety_disclaimer"] in result["doctor_facing_response"]
+    assert "Lưu ý:" not in result["doctor_facing_response"]
+
+
+def test_interaction_checked_without_interaction_risk_uses_required_summary() -> None:
+    report = _report()
+    result = DoctorReportComposerService(enabled=False).compose(report)
+
+    interaction = result["doctor_facing_sections"]["interaction_check"]
+
+    assert interaction["items"] == []
+    assert interaction["summary"] == NO_INTERACTION_WARNING
+    assert NO_INTERACTION_WARNING in result["doctor_facing_response"]
+    assert "Không có tương tác thuốc" not in result["doctor_facing_response"]
+
+
+def test_interaction_risk_is_separated_from_prescription_items() -> None:
+    report = _report()
+    report["risk_items"].append(
+        {
+            "risk_type": "interaction",
+            "severity": "moderate",
+            "title": "Metformin + thuốc cản quang",
+            "explanation": "Cần rà soát nguy cơ khi dùng cùng thuốc cản quang.",
+            "recommendation": "Recommendation should not appear.",
+            "evidence_refs": [],
+            "evidence": [],
+        }
+    )
+
+    result = DoctorReportComposerService(enabled=False).compose(report)
+    sections = result["doctor_facing_sections"]
+
+    assert len(sections["prescription_check"]["items"]) == 1
+    assert len(sections["interaction_check"]["items"]) == 1
+    assert sections["interaction_check"]["items"][0]["title"] == "Metformin + thuốc cản quang"
+    assert "chưa ghi nhận tương tác thuốc-thuốc" not in result["doctor_facing_response"]
+    assert "Không có tương tác thuốc" not in result["doctor_facing_response"]
+
+
+def test_main_response_excludes_recommendations() -> None:
+    report = _report()
+    report["risk_items"][0]["recommendation"] = "UNIQUE_RECOMMENDATION_TEXT"
+
+    result = DoctorReportComposerService(enabled=False).compose(report)
+
+    assert result["risk_items"][0]["recommendation"] == "UNIQUE_RECOMMENDATION_TEXT"
+    assert "UNIQUE_RECOMMENDATION_TEXT" not in result["doctor_facing_response"]
 
 
 def test_missing_information_variants_are_mapped_deduplicated_and_filtered() -> None:
@@ -371,7 +463,6 @@ def test_directive_wording_is_softened_in_doctor_facing_response() -> None:
     assert "Cân nhắc thực hiện các xét nghiệm" not in text
     assert "Hướng dẫn bệnh nhân" not in text
     assert "cần uống" not in text.casefold()
-    assert "Bác sĩ/dược sĩ nên rà soát thời điểm dùng thuốc" in text
     assert "Bác sĩ/dược sĩ nên đối chiếu" in text
 
 

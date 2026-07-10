@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import type { AuditMessageItem } from '../types/auditConversation'
 import type {
+  DoctorFacingSection,
+  DoctorFacingSections,
   EvidenceItem,
   MedicationSummary,
   PrescriptionAuditResponse,
@@ -171,12 +173,116 @@ const mapMissingInformation = (value: string[] | null | undefined): string[] =>
     asTextArray(value).map((item) => MISSING_INFORMATION_LABELS[item] || item),
   )
 
+const DOCTOR_FACING_SECTION_ORDER = [
+  'prescription_check',
+  'interaction_check',
+  'doctor_memory',
+  'safety_note',
+] as const
+
+const hasDoctorFacingSectionContent = (
+  section: DoctorFacingSection | null | undefined,
+): section is DoctorFacingSection => {
+  if (!section) {
+    return false
+  }
+
+  return Boolean(
+    String(section.title || '').trim() ||
+      String(section.summary || '').trim() ||
+      String(section.content || '').trim() ||
+      hasItems(section.items),
+  )
+}
+
+const hasDoctorFacingSections = (
+  sections: DoctorFacingSections | null | undefined,
+): sections is DoctorFacingSections =>
+  Boolean(
+    sections &&
+      DOCTOR_FACING_SECTION_ORDER.some((key) =>
+        hasDoctorFacingSectionContent(sections[key]),
+      ),
+  )
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mt-5">
       <h3 className="text-sm font-semibold text-gray-950">{title}</h3>
       <div className="mt-2">{children}</div>
     </section>
+  )
+}
+
+function DoctorFacingSectionsView({
+  sections,
+}: {
+  sections: DoctorFacingSections
+}) {
+  const orderedSections = DOCTOR_FACING_SECTION_ORDER.map((key) => [
+    key,
+    sections[key],
+  ] as const).filter(([, section]) => hasDoctorFacingSectionContent(section))
+
+  if (!hasItems(orderedSections)) {
+    return null
+  }
+
+  return (
+    <div className="space-y-6 text-sm leading-7 text-gray-900">
+      {orderedSections.map(([key, section]) => {
+        if (!section) {
+          return null
+        }
+
+        const title = String(section.title || '').trim()
+        const summary = String(section.summary || '').trim()
+        const content = String(section.content || '').trim()
+        const items = Array.isArray(section.items) ? section.items : []
+
+        return (
+          <section key={key}>
+            {title ? (
+              <h3 className="font-semibold uppercase text-gray-950">{title}</h3>
+            ) : null}
+            {summary ? (
+              <p className="mt-2 whitespace-pre-wrap text-gray-800">{summary}</p>
+            ) : null}
+            {content ? (
+              <p className="mt-2 whitespace-pre-wrap text-gray-800">{content}</p>
+            ) : null}
+            {hasItems(items) ? (
+              <ol className="mt-3 space-y-4">
+                {items.map((item, index) => {
+                  const itemTitle = String(item.title || '').trim()
+                  const severity = String(item.severity || '').trim()
+                  const itemContent = String(item.content || '').trim()
+
+                  return (
+                    <li key={`${itemTitle || key}-${index}`}>
+                      <p className="font-semibold text-gray-950">
+                        {index + 1}. {itemTitle || 'Điểm cần lưu ý'}
+                        {severity ? (
+                          <span className="font-medium text-gray-700">
+                            {' '}
+                            ({severity})
+                          </span>
+                        ) : null}
+                      </p>
+                      {itemContent ? (
+                        <p className="mt-1 whitespace-pre-wrap pl-5 text-gray-800">
+                          {itemContent}
+                        </p>
+                      ) : null}
+                    </li>
+                  )
+                })}
+              </ol>
+            ) : null}
+          </section>
+        )
+      })}
+    </div>
   )
 }
 
@@ -549,9 +655,13 @@ function DoctorFacingAuditResult({
 
   return (
     <div>
-      <div className="whitespace-pre-wrap text-sm leading-7 text-gray-900">
-        {doctorFacingResponse}
-      </div>
+      {hasDoctorFacingSections(report?.doctor_facing_sections) ? (
+        <DoctorFacingSectionsView sections={report?.doctor_facing_sections} />
+      ) : (
+        <div className="whitespace-pre-wrap text-sm leading-7 text-gray-900">
+          {doctorFacingResponse}
+        </div>
+      )}
 
       <SourceReferences riskItems={riskItems} />
 

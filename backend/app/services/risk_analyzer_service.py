@@ -139,6 +139,7 @@ class RiskAnalyzerService:
                     "raw_line": medication.get("raw_line"),
                     "generic_text": medication.get("generic_text"),
                     "brand_text": medication.get("brand_text"),
+                    "instruction": medication.get("instruction"),
                     "mapping_status": medication.get("mapping_status"),
                     "requires_review": medication.get("requires_review"),
                     "warnings": list(medication.get("warnings") or []),
@@ -220,6 +221,66 @@ class RiskAnalyzerService:
     @staticmethod
     def _valid_ref_set(valid_evidence_refs: set[str] | list[str]) -> set[str]:
         return {str(ref) for ref in valid_evidence_refs if ref}
+
+    @staticmethod
+    def _has_instruction_for_medications(evidence_context: dict[str, Any]) -> bool:
+        medications = evidence_context.get("medications")
+        if not isinstance(medications, list) or not medications:
+            return False
+        relevant_medications = [
+            medication
+            for medication in medications
+            if isinstance(medication, dict)
+            and (
+                medication.get("raw_name")
+                or medication.get("raw_line")
+                or medication.get("active_ingredients")
+            )
+        ]
+        if not relevant_medications:
+            return False
+        return all(
+            bool(str(medication.get("instruction") or "").strip())
+            for medication in relevant_medications
+        )
+
+    @staticmethod
+    def _is_dosage_missing_information(item: Any) -> bool:
+        folded = _fold_text(item)
+        dosage_terms = {
+            "lieu",
+            "lieu dung",
+            "cach dung",
+            "huong dan dung",
+            "huong dan uong",
+            "tan suat",
+            "so lan",
+            "moi lan",
+            "hang ngay",
+            "hằng ngày",
+            "daily dose",
+            "dosage",
+            "dose",
+            "frequency",
+            "instruction",
+        }
+        return any(term in folded for term in dosage_terms)
+
+    @classmethod
+    def _filter_missing_information(
+        cls,
+        missing_information: list[Any],
+        evidence_context: dict[str, Any],
+    ) -> list[str]:
+        has_instructions = cls._has_instruction_for_medications(evidence_context)
+        output: list[str] = []
+        for item in missing_information:
+            if not item:
+                continue
+            if has_instructions and cls._is_dosage_missing_information(item):
+                continue
+            output.append(str(item))
+        return output
 
     def validate_llm_analysis(
         self,
@@ -382,10 +443,13 @@ class RiskAnalyzerService:
             "risk_items": validation["risk_items"],
             "evidence_context": evidence_context,
             "missing_information": _deduplicate(
-                [
+                self._filter_missing_information(
+                    [
                     *evidence_context["missing_information"],
                     *validation["missing_information"],
-                ]
+                    ],
+                    evidence_context,
+                )
             ),
             "warnings": validation["warnings"],
             "errors": validation["errors"],

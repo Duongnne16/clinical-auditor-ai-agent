@@ -173,6 +173,7 @@ def test_analysis_ready_attaches_evidence_to_risk_item() -> None:
 
     assert report["status"] == "report_ready"
     assert report["overall_risk_level"] == "moderate"
+    assert report["checked_query_types"] == ["interaction"]
     assert report["risk_items"][0]["evidence"][0]["chunk_id"] == "interaction-1"
     assert report["risk_items"][0]["evidence"][0]["url"] == "https://example.test/omeprazole"
     assert report["source_count"] == 1
