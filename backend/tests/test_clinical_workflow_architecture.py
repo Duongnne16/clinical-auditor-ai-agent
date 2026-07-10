@@ -14,6 +14,7 @@ from backend.app.core.dependencies import (
     get_clinical_workflow_graph_service,
     get_current_doctor_id,
     get_prescription_workflow_graph_service,
+    get_unified_clinical_workflow_graph_service,
 )
 from backend.app.db.session import get_db
 from backend.app.main import app
@@ -459,15 +460,21 @@ def test_prescription_audit_request_type_does_not_call_intent_router() -> None:
     assert state["intent"] == ClinicalIntent.PRESCRIPTION_CHECK
 
 
-def test_dependency_isolation_between_chat_and_prescription_graphs() -> None:
+def test_dependency_boundaries_for_chat_prescription_and_unified_graphs() -> None:
     chat_dependency_source = inspect.getsource(get_clinical_workflow_graph_service)
+    unified_dependency_source = inspect.getsource(
+        get_unified_clinical_workflow_graph_service
+    )
     prescription_dependency_source = inspect.getsource(
         get_prescription_workflow_graph_service
     )
 
     assert "get_prescription_audit_service" not in chat_dependency_source
-    assert "PrescriptionAuditService" not in chat_dependency_source
     assert "prescription_audit_service" not in chat_dependency_source
+    assert "chat_query_service" in chat_dependency_source
+    assert "get_prescription_audit_service" in unified_dependency_source
+    assert "prescription_audit_service" in unified_dependency_source
+    assert "chat_query_service" in unified_dependency_source
     assert "chat_query_service" not in prescription_dependency_source
 
 

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import itertools
+import logging
 import re
 import unicodedata
 from typing import Any, Iterable
+
+
+logger = logging.getLogger(__name__)
 
 
 VALID_RISK_TYPES = {
@@ -18,6 +22,15 @@ VALID_RISK_TYPES = {
 }
 
 VALID_RISK_LEVELS = {"low", "moderate", "high", "unknown"}
+RISK_LEVEL_PRIORITY = {
+    "unknown": 0,
+    "low": 1,
+    "moderate": 2,
+    "high": 3,
+}
+DRUG_DRUG_CONTRAINDICATION_WARNING = (
+    "drug_drug_contraindication_normalized_to_interaction"
+)
 
 PATIENT_CONTEXT_FIELDS = [
     "age",
@@ -55,7 +68,44 @@ def _fold_text(value: Any) -> str:
     without_marks = "".join(
         char for char in normalized if unicodedata.category(char) != "Mn"
     )
-    return re.sub(r"\s+", " ", without_marks).strip().replace("Ä‘", "d")
+    return re.sub(r"\s+", " ", without_marks).strip().replace("đ", "d")
+
+
+def _is_higher_risk_level(candidate: str, current: str) -> bool:
+    return RISK_LEVEL_PRIORITY.get(candidate, 0) > RISK_LEVEL_PRIORITY.get(
+        current, 0
+    )
+
+
+def _risk_item_text(item: dict[str, Any]) -> str:
+    return " ".join(
+        str(item.get(field) or "")
+        for field in ("title", "explanation", "recommendation")
+    )
+
+
+def _mentions_contraindication(item: dict[str, Any]) -> bool:
+    folded = _fold_text(_risk_item_text(item))
+    return any(
+        term in folded
+        for term in (
+            "contraindication",
+            "contraindicated",
+            "chong chi dinh",
+            "khong duoc phoi hop",
+            "khong dung chung",
+            "khong dung dong thoi",
+            "tranh phoi hop",
+            "avoid combination",
+            "do not coadminister",
+            "do not co-administer",
+        )
+    )
+
+
+def _is_drug_drug_context(risk_type: str, affected_slugs: list[Any]) -> bool:
+    affected_count = len([slug for slug in affected_slugs if slug])
+    return risk_type == "interaction" or affected_count >= 2
 
 
 def _has_meaningful_context_value(value: Any) -> bool:
@@ -85,7 +135,7 @@ class RiskAnalyzerService:
     def __init__(
         self,
         llm_client: Any | None = None,
-        max_chunks_per_query_type: int = 5,
+        max_chunks_per_query_type: int = 3,
     ) -> None:
         if max_chunks_per_query_type <= 0:
             raise ValueError("max_chunks_per_query_type must be greater than 0")
@@ -330,6 +380,20 @@ class RiskAnalyzerService:
             affected_slugs = item.get("affected_slugs")
             if not isinstance(affected_slugs, list):
                 affected_slugs = []
+            is_drug_drug_contraindication = (
+                risk_type == "contraindication"
+                and _is_drug_drug_context(risk_type, affected_slugs)
+            ) or (
+                risk_type == "interaction"
+                and _mentions_contraindication(item)
+            )
+            if is_drug_drug_contraindication:
+                if risk_type != "interaction":
+                    warnings.append(DRUG_DRUG_CONTRAINDICATION_WARNING)
+                risk_type = "interaction"
+                if severity != "high":
+                    warnings.append(DRUG_DRUG_CONTRAINDICATION_WARNING)
+                severity = "high"
 
             sanitized_items.append(
                 {
@@ -344,6 +408,9 @@ class RiskAnalyzerService:
                     "recommendation": item.get("recommendation"),
                 }
             )
+
+            if _is_higher_risk_level(severity, overall_risk_level):
+                overall_risk_level = severity
 
         missing_information = llm_result.get("missing_information")
         if not isinstance(missing_information, list):
@@ -427,6 +494,7 @@ class RiskAnalyzerService:
                 set(evidence_context["valid_evidence_refs"]),
             )
         except Exception:
+            logger.exception("Gemini risk analysis failed")
             return {
                 "status": "analysis_failed",
                 "overall_risk_level": "unknown",

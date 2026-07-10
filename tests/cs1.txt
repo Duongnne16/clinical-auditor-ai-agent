@@ -1,0 +1,24 @@
+ĐƠN NGOẠI TRÚ 1
+Bệnh viện: Bệnh viện B
+Khoa: Tim mạch 
+I. THÔNG TIN BỆNH NHÂN
+•	Họ và tên: Nguyễn Văn A
+•	Tuổi: 65
+•	Nam/Nữ: Nam
+•	Cân nặng: 68 kg
+•	Địa chỉ: Quận Cầu Giấy, Hà Nội
+II. THÔNG TIN LÂM SÀNG
+•	Chẩn đoán: Rối loạn lipid máu
+•	Dị ứng thuốc: Không
+•	Bệnh nền: Viêm xoang
+•	Chức năng gan: Bình thường
+•	Chức năng thận: Bình thường
+•	Thai kỳ/ cho con bú: Không
+•	Thuốc khác đang dùng: Không
+III. CHỈ ĐỊNH DÙNG THUỐC
+1.	Simvastatin (Stella) 20 mg x 30 viên
+Ngày uống 1 lần, mỗi lần 1 viên.
+2.	Clarithromycin 500 mg  x 30 viên
+Ngày uống 2 lần, mỗi lần 1 viên.
+Ngày , tháng, năm
+Bác sĩ khám bệnh

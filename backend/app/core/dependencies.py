@@ -40,6 +40,18 @@ def get_clinical_workflow_graph_service(
     return build_clinical_workflow_graph_service(chat_query_service)
 
 
+def get_unified_clinical_workflow_graph_service(
+    chat_query_service: ChatQueryService = Depends(get_chat_query_service),
+    prescription_audit_service: PrescriptionAuditService = Depends(
+        get_prescription_audit_service
+    ),
+) -> ClinicalWorkflowGraphService:
+    return ClinicalWorkflowGraphService(
+        prescription_audit_service=prescription_audit_service,
+        chat_query_service=chat_query_service,
+    )
+
+
 def get_prescription_workflow_graph_service(
     prescription_audit_service: PrescriptionAuditService = Depends(
         get_prescription_audit_service

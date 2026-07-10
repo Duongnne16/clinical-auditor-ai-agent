@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any, Callable, Iterable
 
@@ -152,15 +152,9 @@ class PrescriptionAuditService:
         content = sanitize_doctor_report_text(
             str(note.get("note_text") or note.get("content") or "").strip()
         )
-        title = sanitize_doctor_report_text(
-            DoctorMemoryService.display_title(note.get("title"), content)
-        )
-        if not title and not content:
+        if not content:
             return None
-        return {
-            "title": title or "Ghi chú riêng",
-            "content": content,
-        }
+        return {"content": content}
 
     @classmethod
     def _doctor_memory_section(cls, matched_notes: list[Any]) -> dict[str, Any]:
@@ -173,9 +167,7 @@ class PrescriptionAuditService:
                 items.append(item)
         return {
             "title": DOCTOR_MEMORY_LABEL.upper(),
-            "summary": "Có ghi chú liên quan từ Doctor Memory."
-            if items
-            else "Chưa có ghi chú liên quan.",
+            "summary": "" if items else "Chưa có ghi chú liên quan.",
             "items": items,
         }
 

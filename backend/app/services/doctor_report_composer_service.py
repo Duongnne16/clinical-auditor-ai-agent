@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import copy
 import unicodedata
@@ -27,6 +27,11 @@ FULL_DOCTOR_FACING_SECTION_KEYS = set(DOCTOR_FACING_SECTION_ORDER)
 NO_INTERACTION_WARNING = (
     "Dựa trên bằng chứng truy xuất hiện có, chưa ghi nhận tương tác thuốc-thuốc "
     "cần cảnh báo giữa các thuốc trong đơn."
+)
+ANALYSIS_FAILED_WARNING = (
+    "Không thể hoàn tất phân tích nguy cơ và tương tác thuốc trong lần kiểm tra "
+    "này. Kết quả này không được dùng để kết luận đơn thuốc không có tương tác; "
+    "bác sĩ/dược sĩ cần rà soát lại trước khi duyệt đơn."
 )
 
 SEVERITY_LABELS = {
@@ -339,6 +344,7 @@ def build_composer_payload(report: dict[str, Any]) -> dict[str, Any]:
         )
 
     return {
+        "report_status": _text(report.get("status")),
         "heading": "Kết quả kiểm tra đơn thuốc",
         "review_priority_label": "Mức ưu tiên rà soát",
         "review_priority": _severity_label(report.get("overall_risk_level")),
@@ -434,7 +440,9 @@ def build_doctor_facing_sections(
             f"{'; '.join(_deduplicate(missing_information))}."
         )
 
-    if interaction_items:
+    if payload.get("report_status") == "report_analysis_failed":
+        interaction_summary = ANALYSIS_FAILED_WARNING
+    elif interaction_items:
         interaction_summary = (
             f"Hệ thống ghi nhận {len(interaction_items)} điểm cần lưu ý liên quan "
             "tương tác thuốc-thuốc."
@@ -507,6 +515,11 @@ def render_doctor_facing_response_from_sections(sections: dict[str, Any]) -> str
             item_title = _text(item.get("title")) or "Điểm cần lưu ý"
             severity = _text(item.get("severity"))
             item_content = _text(item.get("content"))
+            if section_key == "doctor_memory" and not _text(item.get("title")):
+                if item_content:
+                    lines.append(f"{index}. {item_content}")
+                    lines.append("")
+                continue
             heading = f"{index}. {item_title}"
             if severity:
                 heading = f"{heading} ({severity})"

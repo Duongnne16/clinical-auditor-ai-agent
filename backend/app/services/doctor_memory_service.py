@@ -22,7 +22,9 @@ DEFAULT_NOTE_TYPE = "clinical_experience"
 DEFAULT_SOURCE_CONTEXT = "prescription_audit"
 DOCTOR_MEMORY_SEMANTIC_VERSION = "doctor_memory_semantic_v2"
 MIN_AUDIT_SEMANTIC_SCORE = 0.35
+MIN_AUDIT_SEMANTIC_SCORE_WITHOUT_METADATA = 0.82
 DOCTOR_MEMORY_PAYLOAD_INDEX_FIELDS = ("doctor_id", "status")
+NON_SPECIFIC_PATIENT_TAGS = {"not_pregnant"}
 NOTE_VALIDATION_ERROR_MESSAGE = (
     "Ghi chú quá ngắn hoặc chưa đủ nội dung chuyên môn để lưu vào Doctor Memory."
 )
@@ -81,6 +83,27 @@ def _text_tokens(value: Any) -> list[str]:
     return re.findall(r"[\w]+", _semantic_normalize(value), flags=re.UNICODE)
 
 
+def _fold_text(value: Any) -> str:
+    text = _normalize_text(value).casefold().replace("\u0111", "d")
+    normalized = unicodedata.normalize("NFKD", text)
+    folded = "".join(
+        char for char in normalized if unicodedata.category(char) != "Mn"
+    )
+    for source, target in {
+        "\u0103": "a",
+        "\u00e2": "a",
+        "\u00ea": "e",
+        "\u00f4": "o",
+        "\u01a1": "o",
+        "\u01b0": "u",
+    }.items():
+        folded = folded.replace(source, target)
+    return folded.replace("\u00c4\u2018", "d").replace(
+        "\u00c3\u201e\u00e2\u20ac\u02dc",
+        "d",
+    )
+
+
 def _repeated_character_text(text: str) -> bool:
     compact = re.sub(r"\s+", "", _semantic_normalize(text))
     if len(compact) < 4:
@@ -90,11 +113,29 @@ def _repeated_character_text(text: str) -> bool:
     return bool(re.search(r"(.)\1{5,}", compact))
 
 
+def _repeated_phrase_text(text: str) -> bool:
+    tokens = _text_tokens(text)
+    if len(tokens) < 8:
+        return False
+    for phrase_length in range(2, min(6, len(tokens) // 2) + 1):
+        phrase_counts: dict[tuple[str, ...], int] = {}
+        for index in range(0, len(tokens) - phrase_length + 1):
+            phrase = tuple(tokens[index : index + phrase_length])
+            phrase_counts[phrase] = phrase_counts.get(phrase, 0) + 1
+        max_count = max(phrase_counts.values()) if phrase_counts else 0
+        repeated_token_ratio = (max_count * phrase_length) / len(tokens)
+        if max_count >= 3 and repeated_token_ratio >= 0.5:
+            return True
+    return False
+
+
 def validate_doctor_note_content(note_text: Any) -> str:
     text = _normalize_text(note_text)
     if len(text) < 16:
         raise DoctorMemoryValidationError(NOTE_VALIDATION_ERROR_MESSAGE)
     if _repeated_character_text(text):
+        raise DoctorMemoryValidationError(NOTE_VALIDATION_ERROR_MESSAGE)
+    if _repeated_phrase_text(text):
         raise DoctorMemoryValidationError(NOTE_VALIDATION_ERROR_MESSAGE)
 
     tokens = _text_tokens(text)
@@ -880,22 +921,52 @@ class DoctorMemoryService:
     def _audit_metadata_overlap(cls, note: dict[str, Any], context: dict[str, Any]) -> int:
         score = 0
         if set(note.get("drug_pair_keys") or []) & set(context.get("drug_pair_keys") or []):
-            score += 1
-        score += cls._overlap(
+            score += 3
+        score += 2 * cls._overlap(
             note.get("active_ingredients") or [],
             context.get("active_ingredients") or [],
-        )
-        score += cls._overlap(
-            note.get("patient_tags") or [],
-            context.get("patient_tags") or [],
         )
         score += cls._overlap(
             note.get("diagnosis_keywords") or [],
             context.get("diagnosis_keywords") or [],
         )
-        if note.get("source_context") == context.get("source_context"):
-            score += 1
+        note_tags = [
+            tag
+            for tag in note.get("patient_tags") or []
+            if tag not in NON_SPECIFIC_PATIENT_TAGS
+        ]
+        context_tags = [
+            tag
+            for tag in context.get("patient_tags") or []
+            if tag not in NON_SPECIFIC_PATIENT_TAGS
+        ]
+        score += cls._overlap(note_tags, context_tags)
         return score
+
+    @classmethod
+    def _has_audit_anchor_match(
+        cls,
+        note: dict[str, Any],
+        context: dict[str, Any],
+    ) -> bool:
+        note_pairs = set(note.get("drug_pair_keys") or [])
+        context_pairs = set(context.get("drug_pair_keys") or [])
+        if note_pairs and note_pairs & context_pairs:
+            return True
+
+        note_ingredients = set(note.get("active_ingredients") or [])
+        context_ingredients = set(context.get("active_ingredients") or [])
+        if note_ingredients:
+            return bool(note_ingredients & context_ingredients)
+
+        note_diagnoses = set(note.get("diagnosis_keywords") or [])
+        context_diagnoses = set(context.get("diagnosis_keywords") or [])
+        if note_diagnoses and note_diagnoses & context_diagnoses:
+            return True
+
+        note_tags = set(note.get("patient_tags") or []) - NON_SPECIFIC_PATIENT_TAGS
+        context_tags = set(context.get("patient_tags") or []) - NON_SPECIFIC_PATIENT_TAGS
+        return bool(note_tags and note_tags & context_tags)
 
     @staticmethod
     def _metadata_tie_break_bonus(metadata_overlap: int) -> float:
@@ -980,6 +1051,14 @@ class DoctorMemoryService:
                 continue
             semantic_score = float(note.get("semantic_score") or note.get("score") or 0.0)
             metadata_overlap = self._audit_metadata_overlap(note, context)
+            has_anchor_match = self._has_audit_anchor_match(note, context)
+            if not has_anchor_match:
+                continue
+            if (
+                metadata_overlap <= 0
+                and semantic_score < MIN_AUDIT_SEMANTIC_SCORE_WITHOUT_METADATA
+            ):
+                continue
             ranking_score = semantic_score + self._metadata_tie_break_bonus(
                 metadata_overlap
             )

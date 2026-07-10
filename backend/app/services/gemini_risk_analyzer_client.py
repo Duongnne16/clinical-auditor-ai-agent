@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any
 
 from backend.app.core.config import get_settings
@@ -44,7 +45,12 @@ class GeminiRiskAnalyzerClient:
             raise RuntimeError(
                 "google-genai is required for GeminiRiskAnalyzerClient"
             ) from exc
-        self.client = genai.Client(api_key=self.api_key)
+        # google-genai expects milliseconds here. Previously the configured
+        # timeout was exposed in stats but never applied to the HTTP request.
+        self.client = genai.Client(
+            api_key=self.api_key,
+            http_options={"timeout": self.timeout_seconds * 1000},
+        )
         return self.client
 
     def _generation_config(self) -> Any | None:
@@ -149,17 +155,25 @@ class GeminiRiskAnalyzerClient:
     def analyze_risks(self, evidence_context: dict[str, Any]) -> dict[str, Any]:
         prompt = self.build_prompt(evidence_context)
         client = self._get_client()
-        try:
-            response = client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=self._generation_config(),
-            )
-        except TypeError:
-            response = client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-            )
+        response: Any = None
+        for attempt in range(2):
+            try:
+                try:
+                    response = client.models.generate_content(
+                        model=self.model_name,
+                        contents=prompt,
+                        config=self._generation_config(),
+                    )
+                except TypeError:
+                    response = client.models.generate_content(
+                        model=self.model_name,
+                        contents=prompt,
+                    )
+                break
+            except Exception:
+                if attempt == 1:
+                    raise
+                time.sleep(0.5)
         return self.parse_response(response)
 
     def get_stats(self) -> dict[str, Any]:

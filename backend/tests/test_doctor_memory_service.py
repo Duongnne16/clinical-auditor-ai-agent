@@ -9,6 +9,7 @@ from backend.app.services.doctor_memory_service import (
     DOCTOR_MEMORY_SEMANTIC_VERSION,
     DOCTOR_MEMORY_VECTOR_SIZE,
     MIN_AUDIT_SEMANTIC_SCORE,
+    MIN_AUDIT_SEMANTIC_SCORE_WITHOUT_METADATA,
     DoctorMemoryValidationError,
     DoctorMemoryService,
     get_doctor_memory_service,
@@ -215,6 +216,24 @@ def test_save_note_upserts_doctor_scoped_payload() -> None:
 def test_note_content_validator_rejects_meaningless_notes(note_text: str) -> None:
     with pytest.raises(DoctorMemoryValidationError):
         validate_doctor_note_content(note_text)
+
+
+def test_note_content_validator_rejects_repeated_phrase_notes() -> None:
+    with pytest.raises(DoctorMemoryValidationError):
+        validate_doctor_note_content(
+            "Tôi muốn ăn cơm Tôi muốn ăn cơm Tôi muốn ăn cơm Tôi muốn ăn cơm"
+        )
+
+
+def test_note_content_validator_allows_clinical_repeated_terms() -> None:
+    note = (
+        "Trong trường hợp này, sử dụng Sildenafil với bệnh nhân có bệnh nền là "
+        "tăng huyết áp thì cần kiểm tra huyết áp hiện tại và đánh giá tình trạng "
+        "tim mạch trước khi sử dụng, đặc biệt nếu bệnh nhân có huyết áp không "
+        "kiểm soát trên 170/110 mmHg, hạ huyết áp dưới 90/50 mmHg."
+    )
+
+    assert validate_doctor_note_content(note) == note
 
 
 def test_save_note_rejects_invalid_note_before_upsert() -> None:
@@ -541,11 +560,83 @@ def test_audit_retrieval_uses_metadata_only_as_tie_break_after_gate() -> None:
         patient_context={"hepatic_function": "hepatic impairment"},
     )
 
-    assert [note["note_id"] for note in result["matched_notes"]][:2] == [
-        "strong",
-        "weak",
-    ]
+    assert [note["note_id"] for note in result["matched_notes"]] == ["strong"]
     assert result["matched_notes"][0]["semantic_score"] == 0.55
+
+
+def test_audit_retrieval_allows_very_high_semantic_match_without_metadata() -> None:
+    semantic_only = _v2(
+        {
+            "note_id": "semantic-only",
+            "doctor_id": "doctor-1",
+            "title": "Rosuvastatin",
+            "note_text": "Theo dÃµi men gan vÃ  Ä‘au cÆ¡ khi dÃ¹ng Rosuvastatin.",
+            "status": "active",
+            "source_context": "prescription_audit",
+            "active_ingredients": [],
+            "diagnosis_keywords": ["viem gan b"],
+        }
+    )
+    service, _, _ = _service(
+        FakeQdrantClient(
+            responses=[
+                [
+                    FakePoint(
+                        semantic_only,
+                        MIN_AUDIT_SEMANTIC_SCORE_WITHOUT_METADATA,
+                    )
+                ]
+            ]
+        )
+    )
+
+    result = service.retrieve_for_audit_context(
+        doctor_id="doctor-1",
+        normalized_result={
+            "medications": [
+                {"active_ingredients": [{"evidence_slug": "rosuvastatin"}]},
+            ]
+        },
+        patient_context={"diagnoses": ["viem gan b"]},
+    )
+
+    assert [note["note_id"] for note in result["matched_notes"]] == ["semantic-only"]
+    assert result["matched_notes"][0]["metadata_overlap"] == 1
+
+
+def test_audit_retrieval_rejects_drug_note_without_drug_anchor_match() -> None:
+    statin_note = _v2(
+        {
+            "note_id": "statin-note",
+            "doctor_id": "doctor-1",
+            "title": "Rosuvastatin",
+            "note_text": "Theo dÃµi men gan vÃ  Ä‘au cÆ¡ khi dÃ¹ng Rosuvastatin.",
+            "status": "active",
+            "source_context": "prescription_audit",
+            "active_ingredients": ["ambroxol", "rosuvastatin"],
+            "diagnosis_keywords": ["benh ly tang huyet ap"],
+            "patient_tags": ["not_pregnant"],
+        }
+    )
+    service, _, _ = _service(
+        FakeQdrantClient(responses=[[FakePoint(statin_note, 0.9)]])
+    )
+
+    result = service.retrieve_for_audit_context(
+        doctor_id="doctor-1",
+        normalized_result={
+            "medications": [
+                {"active_ingredients": [{"evidence_slug": "isosorbide-mononitrate"}]},
+                {"active_ingredients": [{"evidence_slug": "sildenafil"}]},
+            ]
+        },
+        patient_context={
+            "diagnoses": ["Bá»‡nh lÃ½ tÄƒng huyáº¿t Ã¡p"],
+            "pregnancy_status": "not pregnant",
+        },
+    )
+
+    assert result == {"matched_notes": []}
 
 
 def test_audit_retrieval_queries_large_candidate_pool_and_slices_to_three() -> None:

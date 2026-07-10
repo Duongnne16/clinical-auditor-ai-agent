@@ -38,6 +38,7 @@ const foldText = (value: unknown): string =>
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
+    .replace(/\u0111/g, 'd')
     .replace(/đ/g, 'd')
 
 const dedupe = (values: string[]): string[] => Array.from(new Set(values))

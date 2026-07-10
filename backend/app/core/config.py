@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     use_langgraph_audit: bool = True
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.5-flash"
+    gemini_model: str = "gemini-2.5-flash"
     gemini_enabled: bool = False
     gemini_temperature: float = 0.0
     gemini_timeout_seconds: int = 60

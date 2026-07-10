@@ -37,6 +37,26 @@ class FakeClient:
         self.models = FakeModels(response)
 
 
+class FlakyModels(FakeModels):
+    def generate_content(
+        self,
+        model: str,
+        contents: str,
+        config: Any | None = None,
+    ) -> Any:
+        if not self.calls:
+            self.calls.append(
+                {"model": model, "contents": contents, "config": config}
+            )
+            raise ConnectionError("temporary disconnect")
+        return super().generate_content(model, contents, config)
+
+
+class FlakyClient:
+    def __init__(self, response: Any) -> None:
+        self.models = FlakyModels(response)
+
+
 def _evidence_context() -> dict[str, Any]:
     return {
         "patient_context": {"age": 60},
@@ -174,6 +194,14 @@ def test_analyze_risks_does_not_validate_or_remove_unsupported_refs() -> None:
     result = client.analyze_risks(_evidence_context())
 
     assert result["risk_items"][0]["evidence_refs"] == ["unsupported-ref"]
+
+
+def test_analyze_risks_retries_one_transient_connection_failure() -> None:
+    client = GeminiRiskAnalyzerClient(client=FlakyClient(_valid_llm_result()))
+
+    result = client.analyze_risks(_evidence_context())
+
+    assert result["overall_risk_level"] == "moderate"
 
 
 def test_missing_api_key_raises_only_when_real_call_is_attempted() -> None:

@@ -135,6 +135,23 @@ def test_chat_drug_question_routes_to_drug_information_query() -> None:
     assert state["intent"] == ClinicalIntent.DRUG_INFORMATION_QUERY
 
 
+def test_unified_interaction_question_without_drug_keyword_routes_to_chat() -> None:
+    message = (
+        "Amlodipin v\u00e0 Alfuzosin d\u00f9ng c\u00f9ng nhau "
+        "c\u00f3 v\u1ea5n \u0111\u1ec1 g\u00ec kh\u00f4ng?"
+    )
+
+    state = _invoke("clinical_workflow", message)
+
+    assert state["intent"] == ClinicalIntent.DRUG_INFORMATION_QUERY
+
+
+def test_unified_weather_question_routes_to_out_of_scope() -> None:
+    state = _invoke("clinical_workflow", "Hom nay thoi tiet Ha Noi nhu the nao?")
+
+    assert state["intent"] == ClinicalIntent.OUT_OF_SCOPE
+
+
 @pytest.mark.parametrize(
     "message",
     [

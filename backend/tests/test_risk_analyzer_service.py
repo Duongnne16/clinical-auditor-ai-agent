@@ -335,6 +335,58 @@ def test_unsupported_evidence_refs_are_removed() -> None:
     assert "unsupported_evidence_ref_removed" in result["warnings"]
 
 
+def test_drug_drug_contraindication_is_normalized_to_high_interaction() -> None:
+    result = RiskAnalyzerService().validate_llm_analysis(
+        {
+            "overall_risk_level": "moderate",
+            "risk_items": [
+                {
+                    "risk_type": "contraindication",
+                    "severity": "moderate",
+                    "title": "Amlodipin + Alfuzosin chống chỉ định phối hợp",
+                    "explanation": "Không dùng chung do nguy cơ tụt huyết áp.",
+                    "affected_slugs": ["amlodipine", "alfuzosin"],
+                    "evidence_refs": ["interaction-1"],
+                }
+            ],
+        },
+        {"interaction-1"},
+    )
+
+    assert result["overall_risk_level"] == "high"
+    assert result["risk_items"][0]["risk_type"] == "interaction"
+    assert result["risk_items"][0]["severity"] == "high"
+    assert (
+        "drug_drug_contraindication_normalized_to_interaction"
+        in result["warnings"]
+    )
+
+
+def test_single_drug_contraindication_stays_outside_interaction_section() -> None:
+    result = RiskAnalyzerService().validate_llm_analysis(
+        {
+            "overall_risk_level": "high",
+            "risk_items": [
+                {
+                    "risk_type": "contraindication",
+                    "severity": "high",
+                    "title": "Metformin chống chỉ định khi eGFR dưới 30",
+                    "explanation": "Liên quan chức năng thận của bệnh nhân.",
+                    "affected_slugs": ["metformin"],
+                    "evidence_refs": ["contraindication-1"],
+                }
+            ],
+        },
+        {"contraindication-1"},
+    )
+
+    assert result["risk_items"][0]["risk_type"] == "contraindication"
+    assert result["risk_items"][0]["severity"] == "high"
+    assert "drug_drug_contraindication_normalized_to_interaction" not in result[
+        "warnings"
+    ]
+
+
 def test_risk_item_without_valid_refs_is_removed() -> None:
     result = RiskAnalyzerService().validate_llm_analysis(
         {

@@ -1,0 +1,129 @@
+{
+  "description": "Additional clinical workflow endpoint test cases with expected behavior and heuristic evaluation criteria.",
+  "cases": [
+    {
+      "id": "cw_case_01_rx_warfarin_aspirin",
+      "category": "prescription_with_evidence",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Tran Van B\n- Tuoi: 70\nII. THONG TIN LAM SANG\n- Chan doan: Rung nhi\n- Di ung thuoc: Khong\nIII. CHI DINH DUNG THUOC\n1. Warfarin 5 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Aspirin 81 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_any": ["warfarin", "aspirin"],
+        "risk_keywords_any": ["bleed", "chay mau", "xuat huyet", "hemorrhag"],
+        "severity_keywords_any": ["high", "cao", "nghiem trong", "major", "serious"],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "cw_case_02_rx_paracetamol_cetirizine",
+      "category": "prescription_with_evidence_low_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Le Thi C\n- Tuoi: 29\nII. THONG TIN LAM SANG\n- Chan doan: Viem mui di ung\n- Di ung thuoc: Khong\nIII. CHI DINH DUNG THUOC\n1. Paracetamol 500 mg x 10 vien\nNgay uong 3 lan, moi lan 1 vien.\n2. Cetirizine 10 mg x 10 vien\nNgay uong 1 lan, moi lan 1 vien buoi toi.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_any": ["paracetamol", "cetirizine"],
+        "not_high_risk_keywords_any": ["khong ghi nhan", "can duoc ra soat", "theo doi", "low", "thap", "moderate", "trung binh"],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "cw_case_03_rx_unknown_drugs",
+      "category": "prescription_without_evidence",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Pham Van D\n- Tuoi: 50\nII. THONG TIN LAM SANG\n- Chan doan: Dau dau\nIII. CHI DINH DUNG THUOC\n1. Xylorafin 250 mg x 10 vien\nNgay uong 2 lan, moi lan 1 vien.\n2. Noverex 5 mg x 10 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "insufficient_keywords_any": ["insufficient", "khong du bang chung", "chua tim thay du bang chung", "requires review", "review"],
+        "expect_sources": false
+      }
+    },
+    {
+      "id": "cw_case_04_rx_isotretinoin_pregnancy",
+      "category": "prescription_with_patient_context",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Nguyen Thi E\n- Tuoi: 26\nII. THONG TIN LAM SANG\n- Chan doan: Mun trung ca nang\n- Thai ky/ cho con bu: Co\nIII. CHI DINH DUNG THUOC\n1. Isotretinoin 10 mg x 30 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {
+        "pregnancy_status": "pregnant"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_any": ["isotretinoin"],
+        "risk_keywords_any": ["pregnan", "thai", "terat", "di tat"],
+        "severity_keywords_any": ["high", "cao", "contraind", "chong chi dinh", "nghiem trong"],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "cw_case_05_chat_paracetamol_adverse",
+      "category": "chat_with_evidence",
+      "input_text": "Paracetamol co tac dung phu gi?",
+      "patient_context": {},
+      "expected": {
+        "result_type": "chat",
+        "intent_any": ["single_drug_query"],
+        "must_contain_any": ["paracetamol"],
+        "answer_keywords_any": ["tac dung", "phan ung", "gan", "adverse", "side effect"],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "cw_case_06_chat_warfarin_aspirin_interaction",
+      "category": "chat_interaction_with_evidence",
+      "input_text": "Warfarin uong cung Aspirin co sao khong?",
+      "patient_context": {},
+      "expected": {
+        "result_type": "chat",
+        "intent_any": ["drug_interaction_query"],
+        "must_contain_any": ["warfarin", "aspirin"],
+        "answer_keywords_any": ["tuong tac", "bleed", "xuat huyet", "chay mau", "interaction"],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "cw_case_07_chat_unknown_drug",
+      "category": "chat_without_evidence",
+      "input_text": "Thuoc Xylorafin co tac dung phu gi?",
+      "patient_context": {},
+      "expected": {
+        "result_type": "chat",
+        "intent_any": ["single_drug_query"],
+        "insufficient_keywords_any": ["chua tim thay du bang chung", "khong du bang chung", "insufficient"],
+        "expect_sources": false
+      }
+    },
+    {
+      "id": "cw_case_08_chat_missing_drug_name",
+      "category": "chat_missing_required_information",
+      "input_text": "Lieu dung the nao?",
+      "patient_context": {},
+      "expected": {
+        "result_type": "chat",
+        "intent_any": ["single_drug_query"],
+        "answer_keywords_any": ["vui long nhap ro ten thuoc", "ten thuoc", "hoat chat"],
+        "warning_keywords_any": ["missing_single_drug_mention", "single_drug_query_requires_drug_name"],
+        "expect_sources": false
+      }
+    },
+    {
+      "id": "cw_case_09_out_of_scope_translation",
+      "category": "non_medical_out_of_scope",
+      "input_text": "Dich cau nay sang tieng Anh: hom nay troi dep qua",
+      "patient_context": {},
+      "expected": {
+        "result_type": "refusal",
+        "intent_any": ["out_of_scope"],
+        "answer_keywords_any": ["outside the supported clinical workflow", "chi ho tro tra cuu", "pham vi"]
+      }
+    },
+    {
+      "id": "cw_case_10_out_of_scope_weather",
+      "category": "non_medical_out_of_scope",
+      "input_text": "Thoi tiet ngay mai o Ha Noi the nao?",
+      "patient_context": {},
+      "expected": {
+        "result_type": "refusal",
+        "intent_any": ["out_of_scope"],
+        "answer_keywords_any": ["outside the supported clinical workflow", "chi ho tro tra cuu", "pham vi"]
+      }
+    }
+  ]
+}

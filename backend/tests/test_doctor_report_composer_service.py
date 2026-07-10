@@ -8,6 +8,7 @@ import pytest
 
 from backend.app.core.config import get_settings
 from backend.app.services.doctor_report_composer_service import (
+    ANALYSIS_FAILED_WARNING,
     GEMINI_COMPOSER_FAILED_WARNING,
     GEMINI_COMPOSER_SAFETY_WARNING,
     NO_INTERACTION_WARNING,
@@ -302,6 +303,18 @@ def test_interaction_checked_without_interaction_risk_uses_required_summary() ->
     assert interaction["summary"] == NO_INTERACTION_WARNING
     assert NO_INTERACTION_WARNING in result["doctor_facing_response"]
     assert "Không có tương tác thuốc" not in result["doctor_facing_response"]
+
+
+def test_analysis_failure_never_claims_no_interaction() -> None:
+    report = _report()
+    report["status"] = "report_analysis_failed"
+    report["risk_items"] = []
+
+    result = DoctorReportComposerService(enabled=False).compose(report)
+
+    text = result["doctor_facing_response"]
+    assert ANALYSIS_FAILED_WARNING in text
+    assert NO_INTERACTION_WARNING not in text
 
 
 def test_interaction_risk_is_separated_from_prescription_items() -> None:

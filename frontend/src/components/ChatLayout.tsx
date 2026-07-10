@@ -2,14 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Clock3,
   FileText,
-  History,
   Loader2,
   LogOut,
   PanelRightOpen,
   Plus,
 } from 'lucide-react'
+import { runClinicalWorkflow } from '../api/clinicalWorkflowApi'
 import {
-  auditPrescription,
   getPrescriptionHistory,
   listPrescriptionHistory,
 } from '../api/prescriptionAuditApi'
@@ -135,7 +134,7 @@ const historyStatusText = (item: PrescriptionHistoryListItem): string => {
     .map((value) => String(value || '').trim())
     .filter(Boolean)
 
-  return parts.length > 0 ? parts.join(' Â· ') : 'Chưa có trạng thái'
+  return parts.length > 0 ? parts.join(' · ') : 'Chưa có trạng thái'
 }
 
 const buildFallbackAuditResponse = (
@@ -309,16 +308,16 @@ export default function ChatLayout({ onLogout }: ChatLayoutProps) {
     setInputFocusSignal((currentSignal) => currentSignal + 1)
   }
 
-  const buildAuditRequest = (
+  const buildWorkflowRequest = (
     prescriptionText: string,
-  ): PrescriptionAuditRequest => {
+  ): Omit<PrescriptionAuditRequest, 'prescription_text'> & { input_text: string } => {
     const activeDemo =
       selectedDemo && prescriptionText === selectedDemo.prescriptionText
         ? selectedDemo
         : null
 
     return {
-      prescription_text: prescriptionText,
+      input_text: prescriptionText,
       patient_context: activeDemo
         ? activeDemo.patientContext
         : defaultPatientContext,
@@ -416,17 +415,32 @@ export default function ChatLayout({ onLogout }: ChatLayoutProps) {
     setIsSubmitting(true)
 
     try {
-      const auditResult = await auditPrescription(buildAuditRequest(trimmedInput))
-      setLatestAuditResult(auditResult)
-      setRelatedMemoryNotes(auditResult.doctor_memory?.matched_notes || [])
-      setIsMemoryPanelOpen(true)
+      const workflowResult = await runClinicalWorkflow(buildWorkflowRequest(trimmedInput))
+      const auditResult = workflowResult.audit_result
 
+      if (workflowResult.result_type === 'audit' && auditResult) {
+        setLatestAuditResult(auditResult)
+        setRelatedMemoryNotes(auditResult.doctor_memory?.matched_notes || [])
+        setIsMemoryPanelOpen(true)
+
+        replaceAssistantMessage(loadingMessageId, {
+          content: '',
+          status: undefined,
+          auditResult,
+        })
+        void refreshHistory()
+        return
+      }
+
+      setLatestAuditResult(null)
+      setRelatedMemoryNotes([])
       replaceAssistantMessage(loadingMessageId, {
-        content: '',
+        content:
+          workflowResult.answer ||
+          workflowResult.message ||
+          'Hệ thống đã xử lý yêu cầu.',
         status: undefined,
-        auditResult,
       })
-      void refreshHistory()
     } catch (error) {
       replaceAssistantMessage(loadingMessageId, {
         content:
@@ -463,7 +477,7 @@ export default function ChatLayout({ onLogout }: ChatLayoutProps) {
             <h1 className="text-sm font-semibold text-gray-900">
               Clinical Auditor
             </h1>
-            <p className="mt-1 text-xs text-gray-500">AI Agent</p>
+            <p className="mt-1 text-xs text-gray-500"></p>
           </div>
 
           <button
@@ -472,7 +486,7 @@ export default function ChatLayout({ onLogout }: ChatLayoutProps) {
             className="mt-2 flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-gray-900 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300"
           >
             <Plus size={16} />
-            New audit
+            Kiểm tra đơn mới
           </button>
 
           <div className="mt-6 space-y-2">
@@ -494,7 +508,7 @@ export default function ChatLayout({ onLogout }: ChatLayoutProps) {
 
             {!isHistoryLoading && historyItems.length === 0 && !historyError ? (
               <p className="px-3 py-2 text-xs leading-5 text-gray-500">
-                Chua co lan kiem tra nao.
+                Chưa có lần kiểm tra nào.
               </p>
             ) : null}
 
@@ -530,12 +544,11 @@ export default function ChatLayout({ onLogout }: ChatLayoutProps) {
                 disabled={isHistoryLoadingMore || isHistoryLoading}
                 className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-gray-300 disabled:cursor-wait disabled:text-gray-400"
               >
-                {isHistoryLoadingMore ? (
+                {/* {isHistoryLoadingMore ? (
                   <Loader2 className="animate-spin" size={14} />
                 ) : (
                   <History size={14} />
-                )}
-                Táº£i thÃªm
+                )} */}
               </button>
             ) : null}
           </div>
@@ -575,7 +588,7 @@ export default function ChatLayout({ onLogout }: ChatLayoutProps) {
           <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-base font-semibold text-gray-900">
-                Clinical Auditor AI Agent
+                
               </p>
             </div>
             <div className="flex min-w-0 items-center gap-2">

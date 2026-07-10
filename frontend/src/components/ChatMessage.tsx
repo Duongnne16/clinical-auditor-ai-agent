@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+﻿import type { ReactNode } from 'react'
 import type { AuditMessageItem } from '../types/auditConversation'
 import type {
   DoctorFacingSection,
@@ -25,13 +25,13 @@ const INTERNAL_MAPPING_CODES = new Set([
 ])
 
 const MISSING_INFORMATION_LABELS: Record<string, string> = {
-  pregnancy_status: 'Tình trạng thai kỳ/cho con bú chưa được ghi nhận.',
-  pregnancy_lactation: 'Tình trạng thai kỳ/cho con bú chưa được ghi nhận.',
-  hepatic_function: 'Chức năng gan chưa được ghi nhận hoặc cần xác nhận.',
-  renal_function: 'Chức năng thận chưa được ghi nhận hoặc cần xác nhận.',
-  current_medications: 'Các thuốc bệnh nhân đang dùng ngoài đơn thuốc chưa được ghi nhận.',
-  allergies: 'Tiền sử dị ứng thuốc chưa được ghi nhận.',
-  diagnoses: 'Bệnh nền/chẩn đoán chưa được ghi nhận đầy đủ.',
+  pregnancy_status: 'TÃ¬nh tráº¡ng thai ká»³/cho con bÃº chÆ°a Ä‘Æ°á»£c ghi nháº­n.',
+  pregnancy_lactation: 'TÃ¬nh tráº¡ng thai ká»³/cho con bÃº chÆ°a Ä‘Æ°á»£c ghi nháº­n.',
+  hepatic_function: 'Chá»©c nÄƒng gan chÆ°a Ä‘Æ°á»£c ghi nháº­n hoáº·c cáº§n xÃ¡c nháº­n.',
+  renal_function: 'Chá»©c nÄƒng tháº­n chÆ°a Ä‘Æ°á»£c ghi nháº­n hoáº·c cáº§n xÃ¡c nháº­n.',
+  current_medications: 'CÃ¡c thuá»‘c bá»‡nh nhÃ¢n Ä‘ang dÃ¹ng ngoÃ i Ä‘Æ¡n thuá»‘c chÆ°a Ä‘Æ°á»£c ghi nháº­n.',
+  allergies: 'Tiá»n sá»­ dá»‹ á»©ng thuá»‘c chÆ°a Ä‘Æ°á»£c ghi nháº­n.',
+  diagnoses: 'Bá»‡nh ná»n/cháº©n Ä‘oÃ¡n chÆ°a Ä‘Æ°á»£c ghi nháº­n Ä‘áº§y Ä‘á»§.',
 }
 
 const EVIDENCE_LABELS: Record<string, string> = {
@@ -60,7 +60,7 @@ const medicationName = (medication: MedicationSummary): string =>
   medication.raw_name ||
   medication.generic_text ||
   medication.brand_text ||
-  'Không rõ tên thuốc'
+  'KhÃ´ng rÃµ tÃªn thuá»‘c'
 
 const activeIngredientText = (medication: MedicationSummary): string => {
   if (!Array.isArray(medication.active_ingredients)) {
@@ -103,7 +103,7 @@ const getDoctorWarnings = (auditResult: PrescriptionAuditResponse): string[] => 
   const explicit = asTextArray(auditResult.report?.doctor_facing_warnings)
   const technical = getMergedWarnings(auditResult)
   const derived = technical.some((warning) => INTERNAL_MAPPING_CODES.has(warning))
-    ? ['Một số dòng thuốc chưa được hệ thống nhận diện chắc chắn, cần rà soát lại.']
+    ? ['Má»™t sá»‘ dÃ²ng thuá»‘c chÆ°a Ä‘Æ°á»£c há»‡ thá»‘ng nháº­n diá»‡n cháº¯c cháº¯n, cáº§n rÃ  soÃ¡t láº¡i.']
     : []
 
   return dedupe([...explicit, ...derived])
@@ -257,23 +257,32 @@ function DoctorFacingSectionsView({
                   const itemTitle = String(item.title || '').trim()
                   const severity = String(item.severity || '').trim()
                   const itemContent = String(item.content || '').trim()
+                  const isDoctorMemoryItem = key === 'doctor_memory' && !itemTitle
 
                   return (
                     <li key={`${itemTitle || key}-${index}`}>
-                      <p className="font-semibold text-gray-950">
-                        {index + 1}. {itemTitle || 'Điểm cần lưu ý'}
-                        {severity ? (
-                          <span className="font-medium text-gray-700">
-                            {' '}
-                            ({severity})
-                          </span>
-                        ) : null}
-                      </p>
-                      {itemContent ? (
-                        <p className="mt-1 whitespace-pre-wrap pl-5 text-gray-800">
-                          {itemContent}
+                      {isDoctorMemoryItem ? (
+                        <p className="whitespace-pre-wrap text-gray-800">
+                          {index + 1}. {itemContent}
                         </p>
-                      ) : null}
+                      ) : (
+                        <>
+                          <p className="font-semibold text-gray-950">
+                            {index + 1}. {itemTitle || 'Điểm cần lưu ý'}
+                            {severity ? (
+                              <span className="font-medium text-gray-700">
+                                {' '}
+                                ({severity})
+                              </span>
+                            ) : null}
+                          </p>
+                          {itemContent ? (
+                            <p className="mt-1 whitespace-pre-wrap pl-5 text-gray-800">
+                              {itemContent}
+                            </p>
+                          ) : null}
+                        </>
+                      )}
                     </li>
                   )
                 })}
@@ -323,13 +332,13 @@ function RiskCards({ riskItems }: { riskItems: RiskItem[] }) {
             <div className="flex flex-wrap items-start gap-2">
               <RiskBadge level={item.severity} />
               <h4 className="min-w-0 flex-1 text-sm font-semibold text-gray-950">
-                {item.title || 'Điểm cần lưu ý'}
+                {item.title || 'Äiá»ƒm cáº§n lÆ°u Ã½'}
               </h4>
             </div>
             {item.explanation ? (
               <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">
                 <span className="font-semibold text-gray-900">
-                  Nội dung đánh giá:{' '}
+                  Ná»™i dung Ä‘Ã¡nh giÃ¡:{' '}
                 </span>
                 {item.explanation}
               </p>
@@ -337,7 +346,7 @@ function RiskCards({ riskItems }: { riskItems: RiskItem[] }) {
             {item.recommendation ? (
               <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">
                 <span className="font-semibold text-gray-900">
-                  Gợi ý rà soát:{' '}
+                  Gá»£i Ã½ rÃ  soÃ¡t:{' '}
                 </span>
                 {item.recommendation}
               </p>
@@ -397,12 +406,12 @@ function MedicationsReview({
             </p>
             {medication.instruction ? (
               <p className="mt-1 text-xs text-gray-600">
-                Hướng dẫn dùng: {medication.instruction}
+                HÆ°á»›ng dáº«n dÃ¹ng: {medication.instruction}
               </p>
             ) : null}
             {ingredients ? (
               <p className="mt-1 text-xs text-gray-500">
-                Hoạt chất: {ingredients}
+                Hoáº¡t cháº¥t: {ingredients}
               </p>
             ) : null}
           </div>
@@ -449,7 +458,7 @@ function TechnicalDetails({
   }
 
   return (
-    <CollapsedDetails title="Chi tiết kỹ thuật" className="text-xs text-gray-600">
+    <CollapsedDetails title="Chi tiáº¿t ká»¹ thuáº­t" className="text-xs text-gray-600">
       {hasItems(warnings) ? (
         <div>
           <p className="font-medium">Warnings</p>
@@ -499,21 +508,21 @@ function ClinicalDetails({
   }
 
   return (
-    <CollapsedDetails title="Chi tiết đánh giá">
+    <CollapsedDetails title="Chi tiáº¿t Ä‘Ã¡nh giÃ¡">
       {hasItems(riskItems) ? (
-        <Section title="Các điểm cần bác sĩ/dược sĩ rà soát">
+        <Section title="CÃ¡c Ä‘iá»ƒm cáº§n bÃ¡c sÄ©/dÆ°á»£c sÄ© rÃ  soÃ¡t">
           <RiskCards riskItems={riskItems} />
         </Section>
       ) : null}
 
       {hasItems(medicationsRequiringReview) ? (
-        <Section title="Thuốc/dòng cần rà soát lại">
+        <Section title="Thuá»‘c/dÃ²ng cáº§n rÃ  soÃ¡t láº¡i">
           <MedicationsReview medications={medicationsRequiringReview} />
         </Section>
       ) : null}
 
       {hasItems(missingInformation) ? (
-        <Section title="Thông tin cần xác nhận">
+        <Section title="ThÃ´ng tin cáº§n xÃ¡c nháº­n">
           <MissingInformationList items={missingInformation} />
         </Section>
       ) : null}
@@ -580,11 +589,11 @@ function StructuredFallbackAuditResult({
   return (
     <div>
       <h2 className="text-base font-semibold text-gray-950">
-        Kết quả kiểm tra đơn thuốc
+        Káº¿t quáº£ kiá»ƒm tra Ä‘Æ¡n thuá»‘c
       </h2>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-gray-700">
-          Mức ưu tiên rà soát
+          Má»©c Æ°u tiÃªn rÃ  soÃ¡t
         </span>
         <RiskBadge level={overallRisk} />
       </div>
@@ -595,30 +604,30 @@ function StructuredFallbackAuditResult({
         </p>
       ) : (
         <p className="mt-4 text-sm leading-7 text-gray-600">
-          API đã trả về phản hồi nhưng chưa có báo cáo chi tiết.
+          API Ä‘Ã£ tráº£ vá» pháº£n há»“i nhÆ°ng chÆ°a cÃ³ bÃ¡o cÃ¡o chi tiáº¿t.
         </p>
       )}
 
       {hasItems(doctorWarnings) ? (
-        <Section title="Điểm cần lưu ý">
+        <Section title="Äiá»ƒm cáº§n lÆ°u Ã½">
           <MissingInformationList items={doctorWarnings} />
         </Section>
       ) : null}
 
       {hasItems(riskItems) ? (
-        <Section title="Các điểm cần bác sĩ/dược sĩ rà soát">
+        <Section title="CÃ¡c Ä‘iá»ƒm cáº§n bÃ¡c sÄ©/dÆ°á»£c sÄ© rÃ  soÃ¡t">
           <RiskCards riskItems={riskItems} />
         </Section>
       ) : null}
 
       {hasItems(medicationsRequiringReview) ? (
-        <Section title="Thuốc/dòng cần rà soát lại">
+        <Section title="Thuá»‘c/dÃ²ng cáº§n rÃ  soÃ¡t láº¡i">
           <MedicationsReview medications={medicationsRequiringReview} />
         </Section>
       ) : null}
 
       {hasItems(missingInformation) ? (
-        <Section title="Thông tin cần bổ sung">
+        <Section title="ThÃ´ng tin cáº§n bá»• sung">
           <MissingInformationList items={missingInformation} />
         </Section>
       ) : null}

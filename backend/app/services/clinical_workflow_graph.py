@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unicodedata
 from typing import Any, TypedDict
 
@@ -18,18 +19,31 @@ MEDICAL_QUERY_KEYWORDS = (
     "contraindication",
     "dose",
     "drug",
+    "dung chung",
+    "dung cung",
     "interaction",
     "lieu",
     "medicine",
     "paracetamol",
+    "phoi hop",
     "prescription",
     "side effect",
     "tac dung",
     "than trong",
     "thuoc",
     "tuong tac",
+    "uong chung",
+    "uong cung",
+)
+MEDICAL_QUERY_PATTERNS = (
+    r"\bco\s+sao\s+khong\b",
+    r"\bco\s+van\s+de\s+gi\s+khong\b",
+    r"\bco\s+anh\s+huong\s+gi\s+khong\b",
+    r"\bdung\s+cung\s+nhau\b",
+    r"\buong\s+cung\s+nhau\b",
 )
 TOP_LEVEL_SAFETY_WARNING = "top_level_safety_rewrite_applied"
+PRESCRIPTION_LIKE_WARNING = "prescription_like_input_routed_to_audit"
 
 
 def _fold_text(value: str) -> str:
@@ -139,7 +153,66 @@ class ClinicalWorkflowGraphService:
     @staticmethod
     def _looks_like_medical_query(input_text: str) -> bool:
         folded = _fold_text(input_text)
-        return any(keyword in folded for keyword in MEDICAL_QUERY_KEYWORDS)
+        return any(keyword in folded for keyword in MEDICAL_QUERY_KEYWORDS) or any(
+            re.search(pattern, folded) for pattern in MEDICAL_QUERY_PATTERNS
+        )
+
+    @staticmethod
+    def _looks_like_prescription(input_text: str) -> bool:
+        text = str(input_text or "")
+        folded = _fold_text(text)
+        if any(
+            phrase in folded
+            for phrase in (
+                "don ngoai tru",
+                "don thuoc",
+                "thong tin benh nhan",
+                "thong tin lam sang",
+                "chi dinh dung thuoc",
+            )
+        ):
+            return True
+
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if len(lines) < 3:
+            return False
+
+        numbered_medication_lines = sum(
+            1
+            for line in lines
+            if re.search(
+                r"^\s*\d+\s*[.)-]\s+.+\b(?:mcg|µg|mg|g|ml|iu|ui|mui|viên|vien|gói|goi)\b",
+                line,
+                flags=re.IGNORECASE,
+            )
+        )
+        instruction_lines = sum(
+            1
+            for line in lines
+            if any(
+                phrase in _fold_text(line)
+                for phrase in ("ngay uong", "moi lan", "sang", "trua", "toi")
+            )
+        )
+        clinical_context_lines = sum(
+            1
+            for line in lines
+            if any(
+                phrase in _fold_text(line)
+                for phrase in (
+                    "chan doan",
+                    "di ung",
+                    "benh nen",
+                    "chuc nang gan",
+                    "chuc nang than",
+                    "thai ky",
+                )
+            )
+        )
+        return numbered_medication_lines >= 2 or (
+            numbered_medication_lines >= 1
+            and (instruction_lines >= 1 or clinical_context_lines >= 1)
+        )
 
     @classmethod
     def _intent_for_state(cls, state: ClinicalWorkflowState) -> ClinicalIntent:
@@ -152,6 +225,17 @@ class ClinicalWorkflowGraphService:
                 or state.get("input_text")
                 or ""
             )
+            if cls._looks_like_medical_query(input_text):
+                return ClinicalIntent.DRUG_INFORMATION_QUERY
+            return ClinicalIntent.OUT_OF_SCOPE
+        if request_type in {"clinical_workflow", "auto"}:
+            input_text = str(
+                cls._get_field(state.get("chat_request"), "message", None)
+                or state.get("input_text")
+                or ""
+            )
+            if cls._looks_like_prescription(input_text):
+                return ClinicalIntent.PRESCRIPTION_CHECK
             if cls._looks_like_medical_query(input_text):
                 return ClinicalIntent.DRUG_INFORMATION_QUERY
             return ClinicalIntent.OUT_OF_SCOPE
@@ -171,6 +255,57 @@ class ClinicalWorkflowGraphService:
         if intent == ClinicalIntent.DRUG_INFORMATION_QUERY:
             return "run_drug_information_branch"
         return "run_out_of_scope_branch"
+
+    @staticmethod
+    def _as_dict(value: Any) -> dict[str, Any]:
+        return value if isinstance(value, dict) else {}
+
+    @classmethod
+    def _prescription_chat_message(cls, prescription_result: Any) -> str:
+        result = cls._as_dict(prescription_result)
+        report = cls._as_dict(result.get("report"))
+        for key in ("doctor_facing_response", "markdown_report"):
+            value = report.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        summary = report.get("summary")
+        if isinstance(summary, str) and summary.strip():
+            return summary.strip()
+        if isinstance(summary, dict):
+            for key in ("main_message", "overview", "risk_summary", "text"):
+                value = summary.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        return (
+            "Nội dung nhập vào giống một đơn thuốc nên hệ thống đã chuyển sang "
+            "luồng kiểm tra đơn thuốc."
+        )
+
+    @classmethod
+    def _wrap_prescription_result_for_chat(
+        cls,
+        prescription_result: Any,
+    ) -> dict[str, Any]:
+        result = cls._as_dict(prescription_result)
+        prescription_check = cls._as_dict(result.get("prescription_check"))
+        normalized_result = cls._as_dict(prescription_check.get("normalized_result"))
+        report = cls._as_dict(result.get("report"))
+        warnings = [
+            PRESCRIPTION_LIKE_WARNING,
+            *[str(warning) for warning in result.get("warnings", []) if warning],
+            *[str(error) for error in result.get("errors", []) if error],
+        ]
+        message = cls._prescription_chat_message(result)
+        return {
+            "message": message,
+            "answer": message,
+            "intent": "prescription_check",
+            "result_type": "audit",
+            "normalized_drugs": list(normalized_result.get("medications") or []),
+            "sources": list(report.get("evidence_sources") or []),
+            "warnings": list(dict.fromkeys(warnings)),
+            "audit_result": result,
+        }
 
     def _run_prescription_audit_branch(
         self,
@@ -195,9 +330,14 @@ class ClinicalWorkflowGraphService:
                 "status": "skeleton_prescription_audit_ready",
                 "message": "Prescription audit branch placeholder.",
             }
+        draft_output = prescription_result
+        if state.get("request_type") in {"clinical_workflow", "auto"}:
+            draft_output = self._wrap_prescription_result_for_chat(
+                prescription_result
+            )
         return {
             "prescription_result": prescription_result,
-            "draft_output": prescription_result,
+            "draft_output": draft_output,
             "trace": self._append_trace(state, "run_prescription_audit_branch"),
         }
 
@@ -217,9 +357,16 @@ class ClinicalWorkflowGraphService:
                 "status": "skeleton_drug_information_ready",
                 "message": "Drug information branch placeholder.",
             }
+        draft_output = chat_result
+        if state.get("request_type") in {"clinical_workflow", "auto"}:
+            draft_output = {
+                **self._as_dict(chat_result),
+                "result_type": "chat",
+                "chat_result": chat_result,
+            }
         return {
             "chat_result": chat_result,
-            "draft_output": chat_result,
+            "draft_output": draft_output,
             "trace": self._append_trace(state, "run_drug_information_branch"),
         }
 
@@ -239,6 +386,8 @@ class ClinicalWorkflowGraphService:
         doctor_id = state.get("doctor_id")
         if doctor_id is not None:
             out_of_scope_result["doctor_id"] = doctor_id
+        if state.get("request_type") in {"clinical_workflow", "auto"}:
+            out_of_scope_result["result_type"] = "refusal"
         return {
             "out_of_scope_result": out_of_scope_result,
             "draft_output": out_of_scope_result,
@@ -304,3 +453,5 @@ class ClinicalWorkflowGraphService:
             "final_result": state.get("draft_output"),
             "trace": self._append_trace(state, "finalize_response"),
         }
+
+

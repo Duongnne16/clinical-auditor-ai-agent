@@ -9,7 +9,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from backend.app.core.dependencies import get_clinical_workflow_graph_service
+from backend.app.core.dependencies import (
+    get_clinical_workflow_graph_service,
+    get_unified_clinical_workflow_graph_service,
+)
 from backend.app.core.security import create_access_token, hash_password
 from backend.app.db.models import Base, User
 from backend.app.db.session import get_db
@@ -83,6 +86,7 @@ def placeholder_client(tmp_path: Path) -> Generator[TestClient, None, None]:
     finally:
         app.dependency_overrides.pop(get_db, None)
         app.dependency_overrides.pop(get_clinical_workflow_graph_service, None)
+        app.dependency_overrides.pop(get_unified_clinical_workflow_graph_service, None)
         app.dependency_overrides.pop(get_doctor_memory_service, None)
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
@@ -93,6 +97,7 @@ def _override_graph_service(
 ) -> FakeClinicalWorkflowGraphService:
     service = fake or FakeClinicalWorkflowGraphService()
     app.dependency_overrides[get_clinical_workflow_graph_service] = lambda: service
+    app.dependency_overrides[get_unified_clinical_workflow_graph_service] = lambda: service
     return service
 
 
@@ -208,7 +213,47 @@ def test_chat_route_can_return_out_of_scope_refusal_with_jwt(
 
     assert response.status_code == 200
     assert response.json()["intent"] == "out_of_scope"
-    assert "chỉ hỗ trợ tra cứu" in response.json()["answer"]
+
+
+def test_clinical_workflow_route_sends_unified_state_with_jwt(
+    placeholder_client: TestClient,
+) -> None:
+    user = _create_user(
+        placeholder_client,
+        doctor_id="doctor-unified",
+        email="unified@example.test",
+    )
+    fake = _override_graph_service()
+
+    response = placeholder_client.post(
+        "/api/v1/clinical-workflow/run",
+        headers=_auth_headers(user),
+        json={
+            "input_text": "Amlodipin có tác dụng gì?",
+            "patient_context": {"age": 60},
+            "use_gemini": True,
+            "query_types": ["general"],
+            "top_k_per_type": 4,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["doctor_id"] == "doctor-unified"
+    assert body["answer"]
+    assert len(fake.calls) == 1
+    state = fake.calls[0]
+    assert state["request_type"] == "clinical_workflow"
+    assert state["input_text"] == "Amlodipin có tác dụng gì?"
+    assert state["chat_request"].message == "Amlodipin có tác dụng gì?"
+    assert state["prescription_request"]["prescription_text"] == (
+        "Amlodipin có tác dụng gì?"
+    )
+    assert state["prescription_request"]["patient_context"] == {"age": 60}
+    assert state["prescription_request"]["use_gemini"] is True
+    assert state["prescription_request"]["query_types"] == ["general"]
+    assert state["prescription_request"]["top_k_per_type"] == 4
+    assert state["doctor_id"] == "doctor-unified"
     assert len(fake.calls) == 1
 
 

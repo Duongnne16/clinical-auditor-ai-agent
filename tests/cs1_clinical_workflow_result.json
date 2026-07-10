@@ -1,0 +1,566 @@
+{
+  "case_file": "tests\\cs1.txt",
+  "executed_at": "2026-07-10T15:38:56.390898+00:00",
+  "endpoint": "POST /api/v1/clinical-workflow/run",
+  "auth": {
+    "email": "abc@gmail.com",
+    "doctor_id_expected": "doctor-66b9b2c0a92246e0ab5b64b2dfd6e11d",
+    "login_status_code": 200,
+    "doctor_id_from_login": "doctor-66b9b2c0a92246e0ab5b64b2dfd6e11d"
+  },
+  "input": {
+    "input_text": "ĐƠN NGOẠI TRÚ 1\nBệnh viện: Bệnh viện B\nKhoa: Tim mạch \nI. THÔNG TIN BỆNH NHÂN\n•\tHọ và tên: Nguyễn Văn A\n•\tTuổi: 65\n•\tNam/Nữ: Nam\n•\tCân nặng: 68 kg\n•\tĐịa chỉ: Quận Cầu Giấy, Hà Nội\nII. THÔNG TIN LÂM SÀNG\n•\tChẩn đoán: Rối loạn lipid máu\n•\tDị ứng thuốc: Không\n•\tBệnh nền: Viêm xoang\n•\tChức năng gan: Bình thường\n•\tChức năng thận: Bình thường\n•\tThai kỳ/ cho con bú: Không\n•\tThuốc khác đang dùng: Không\nIII. CHỈ ĐỊNH DÙNG THUỐC\n1.\tSimvastatin (Stella) 20 mg x 30 viên\nNgày uống 1 lần, mỗi lần 1 viên.\n2.\tClarithromycin 500 mg  x 30 viên\nNgày uống 2 lần, mỗi lần 1 viên.\nNgày , tháng, năm\nBác sĩ khám bệnh\n",
+    "patient_context": {},
+    "use_gemini": false,
+    "top_k_per_type": 8
+  },
+  "output": {
+    "status_code": 200,
+    "body": {
+      "doctor_id": "doctor-66b9b2c0a92246e0ab5b64b2dfd6e11d",
+      "message": "KẾT QUẢ KIỂM TRA ĐƠN THUỐC\n\nTrong phạm vi dữ liệu đã truy xuất, hệ thống chưa ghi nhận điểm cần bác sĩ/dược sĩ rà soát ngoài nhóm tương tác thuốc-thuốc.\n\nKIỂM TRA TƯƠNG TÁC GIỮA CÁC THUỐC TRONG ĐƠN\n\nChưa có tín hiệu kiểm tra tương tác thuốc-thuốc trong lần rà soát này.\n\nGHI CHÚ RIÊNG CỦA BÁC SĨ\n\nChưa có ghi chú liên quan.\n\nLƯU Ý AN TOÀN\n\nBáo cáo này chỉ nhằm hỗ trợ bác sĩ/dược sĩ rà soát đơn thuốc dựa trên dữ liệu hiện có và không thay thế quyết định chuyên môn. Bác sĩ/dược sĩ là người chịu trách nhiệm đánh giá cuối cùng dựa trên tình trạng lâm sàng thực tế của bệnh nhân.",
+      "answer": "KẾT QUẢ KIỂM TRA ĐƠN THUỐC\n\nTrong phạm vi dữ liệu đã truy xuất, hệ thống chưa ghi nhận điểm cần bác sĩ/dược sĩ rà soát ngoài nhóm tương tác thuốc-thuốc.\n\nKIỂM TRA TƯƠNG TÁC GIỮA CÁC THUỐC TRONG ĐƠN\n\nChưa có tín hiệu kiểm tra tương tác thuốc-thuốc trong lần rà soát này.\n\nGHI CHÚ RIÊNG CỦA BÁC SĨ\n\nChưa có ghi chú liên quan.\n\nLƯU Ý AN TOÀN\n\nBáo cáo này chỉ nhằm hỗ trợ bác sĩ/dược sĩ rà soát đơn thuốc dựa trên dữ liệu hiện có và không thay thế quyết định chuyên môn. Bác sĩ/dược sĩ là người chịu trách nhiệm đánh giá cuối cùng dựa trên tình trạng lâm sàng thực tế của bệnh nhân.",
+      "intent": "prescription_check",
+      "result_type": "audit",
+      "normalized_drugs": [
+        {
+          "raw_name": "1.\tSimvastatin (Stella) 20 mg x 30 viên",
+          "raw_line": "1.\tSimvastatin (Stella) 20 mg x 30 viên",
+          "order_index": 1,
+          "generic_text": "Simvastatin",
+          "brand_text": "Stella",
+          "strength_text": "20 mg",
+          "quantity": {
+            "value": 30,
+            "unit": "viên"
+          },
+          "ingredients": [
+            {
+              "name": "Simvastatin",
+              "strength_raw": "20 mg",
+              "strength_value": 20.0,
+              "strength_unit": "mg"
+            }
+          ],
+          "is_combination": false,
+          "parse_status": "parsed",
+          "instruction": "Ngày uống 1 lần, mỗi lần 1 viên.",
+          "warnings": [
+            "ingredient_evidence_requires_review"
+          ],
+          "mapping_status": "ingredient_with_brand",
+          "brand_verification_status": "not_found",
+          "matched_brand": null,
+          "mapping_id": null,
+          "mapping_match_type": "generic_first",
+          "mapping_score": null,
+          "mapping_confidence": "high",
+          "source_url": null,
+          "active_ingredients": [
+            {
+              "name": "Simvastatin",
+              "normalized_name": "simvastatin",
+              "strength_raw": "20 mg",
+              "strength_value": 20.0,
+              "strength_unit": "mg",
+              "evidence_status": "resolved",
+              "evidence_name": "Simvastatin: Thuốc điều trị rối loạn lipid máu - Dược thư Quốc Gia 2022",
+              "evidence_slug": "simvastatin",
+              "evidence_match_type": "exact",
+              "evidence_score": 1.0,
+              "evidence_requires_review": true,
+              "evidence_warnings": [
+                "evidence_resolution_requires_review"
+              ]
+            }
+          ],
+          "requires_review": true,
+          "mapping_candidates": []
+        },
+        {
+          "raw_name": "2.\tClarithromycin 500 mg  x 30 viên",
+          "raw_line": "2.\tClarithromycin 500 mg  x 30 viên",
+          "order_index": 2,
+          "generic_text": "Clarithromycin",
+          "brand_text": null,
+          "strength_text": "500 mg",
+          "quantity": {
+            "value": 30,
+            "unit": "viên"
+          },
+          "ingredients": [
+            {
+              "name": "Clarithromycin",
+              "strength_raw": "500 mg",
+              "strength_value": 500.0,
+              "strength_unit": "mg"
+            }
+          ],
+          "is_combination": false,
+          "parse_status": "parsed",
+          "instruction": "Ngày uống 2 lần, mỗi lần 1 viên.",
+          "warnings": [
+            "ingredient_evidence_requires_review"
+          ],
+          "mapping_status": "ingredient_only",
+          "brand_verification_status": "not_checked",
+          "matched_brand": null,
+          "mapping_id": null,
+          "mapping_match_type": "generic_first",
+          "mapping_score": null,
+          "mapping_confidence": "high",
+          "source_url": null,
+          "active_ingredients": [
+            {
+              "name": "Clarithromycin",
+              "normalized_name": "clarithromycin",
+              "strength_raw": "500 mg",
+              "strength_value": 500.0,
+              "strength_unit": "mg",
+              "evidence_status": "resolved",
+              "evidence_name": "Clarithromycin: Kháng sinh macrolid bán tổng hợp - Dược thư Quốc Gia 2022",
+              "evidence_slug": "clarithromycin",
+              "evidence_match_type": "exact",
+              "evidence_score": 1.0,
+              "evidence_requires_review": true,
+              "evidence_warnings": [
+                "evidence_resolution_requires_review"
+              ]
+            }
+          ],
+          "requires_review": true,
+          "mapping_candidates": []
+        }
+      ],
+      "sources": [],
+      "warnings": [
+        "prescription_like_input_routed_to_audit",
+        "ingredient_evidence_requires_review",
+        "some_medications_require_review",
+        "no_evidence_available_for_analysis",
+        "safety_mapping_requires_review",
+        "safety_no_valid_evidence",
+        "prescription_document_parser_applied",
+        "doctor_memory_retrieval_failed",
+        "evidence_retrieval_failed"
+      ],
+      "audit_result": {
+        "status": "partial_success",
+        "prescription_check": {
+          "status": "evidence_retrieval_failed",
+          "doctor_id": "doctor-66b9b2c0a92246e0ab5b64b2dfd6e11d",
+          "patient_context": {
+            "hospital": "Bệnh viện B",
+            "department": "Tim mạch",
+            "patient_name": "Nguyễn Văn A",
+            "age": 65,
+            "sex": "male",
+            "weight": "68 kg",
+            "address": "Quận Cầu Giấy, Hà Nội",
+            "diagnoses": [
+              "Rối loạn lipid máu"
+            ],
+            "allergies": "Không",
+            "comorbidities": "Viêm xoang",
+            "hepatic_function": "Bình thường",
+            "renal_function": "Bình thường",
+            "pregnancy_lactation": "Không",
+            "current_medications": "Không"
+          },
+          "input": {
+            "raw_text": "1.\tSimvastatin (Stella) 20 mg x 30 viên\nNgày uống 1 lần, mỗi lần 1 viên.\n2.\tClarithromycin 500 mg  x 30 viên\nNgày uống 2 lần, mỗi lần 1 viên.",
+            "line_count": 2,
+            "medication_lines": [
+              "1.\tSimvastatin (Stella) 20 mg x 30 viên",
+              "2.\tClarithromycin 500 mg  x 30 viên"
+            ]
+          },
+          "normalized_result": {
+            "medications": [
+              {
+                "raw_name": "1.\tSimvastatin (Stella) 20 mg x 30 viên",
+                "raw_line": "1.\tSimvastatin (Stella) 20 mg x 30 viên",
+                "order_index": 1,
+                "generic_text": "Simvastatin",
+                "brand_text": "Stella",
+                "strength_text": "20 mg",
+                "quantity": {
+                  "value": 30,
+                  "unit": "viên"
+                },
+                "ingredients": [
+                  {
+                    "name": "Simvastatin",
+                    "strength_raw": "20 mg",
+                    "strength_value": 20.0,
+                    "strength_unit": "mg"
+                  }
+                ],
+                "is_combination": false,
+                "parse_status": "parsed",
+                "instruction": "Ngày uống 1 lần, mỗi lần 1 viên.",
+                "warnings": [
+                  "ingredient_evidence_requires_review"
+                ],
+                "mapping_status": "ingredient_with_brand",
+                "brand_verification_status": "not_found",
+                "matched_brand": null,
+                "mapping_id": null,
+                "mapping_match_type": "generic_first",
+                "mapping_score": null,
+                "mapping_confidence": "high",
+                "source_url": null,
+                "active_ingredients": [
+                  {
+                    "name": "Simvastatin",
+                    "normalized_name": "simvastatin",
+                    "strength_raw": "20 mg",
+                    "strength_value": 20.0,
+                    "strength_unit": "mg",
+                    "evidence_status": "resolved",
+                    "evidence_name": "Simvastatin: Thuốc điều trị rối loạn lipid máu - Dược thư Quốc Gia 2022",
+                    "evidence_slug": "simvastatin",
+                    "evidence_match_type": "exact",
+                    "evidence_score": 1.0,
+                    "evidence_requires_review": true,
+                    "evidence_warnings": [
+                      "evidence_resolution_requires_review"
+                    ]
+                  }
+                ],
+                "requires_review": true,
+                "mapping_candidates": []
+              },
+              {
+                "raw_name": "2.\tClarithromycin 500 mg  x 30 viên",
+                "raw_line": "2.\tClarithromycin 500 mg  x 30 viên",
+                "order_index": 2,
+                "generic_text": "Clarithromycin",
+                "brand_text": null,
+                "strength_text": "500 mg",
+                "quantity": {
+                  "value": 30,
+                  "unit": "viên"
+                },
+                "ingredients": [
+                  {
+                    "name": "Clarithromycin",
+                    "strength_raw": "500 mg",
+                    "strength_value": 500.0,
+                    "strength_unit": "mg"
+                  }
+                ],
+                "is_combination": false,
+                "parse_status": "parsed",
+                "instruction": "Ngày uống 2 lần, mỗi lần 1 viên.",
+                "warnings": [
+                  "ingredient_evidence_requires_review"
+                ],
+                "mapping_status": "ingredient_only",
+                "brand_verification_status": "not_checked",
+                "matched_brand": null,
+                "mapping_id": null,
+                "mapping_match_type": "generic_first",
+                "mapping_score": null,
+                "mapping_confidence": "high",
+                "source_url": null,
+                "active_ingredients": [
+                  {
+                    "name": "Clarithromycin",
+                    "normalized_name": "clarithromycin",
+                    "strength_raw": "500 mg",
+                    "strength_value": 500.0,
+                    "strength_unit": "mg",
+                    "evidence_status": "resolved",
+                    "evidence_name": "Clarithromycin: Kháng sinh macrolid bán tổng hợp - Dược thư Quốc Gia 2022",
+                    "evidence_slug": "clarithromycin",
+                    "evidence_match_type": "exact",
+                    "evidence_score": 1.0,
+                    "evidence_requires_review": true,
+                    "evidence_warnings": [
+                      "evidence_resolution_requires_review"
+                    ]
+                  }
+                ],
+                "requires_review": true,
+                "mapping_candidates": []
+              }
+            ],
+            "summary": {
+              "total_medications": 2,
+              "matched_medications": 0,
+              "product_matched_medications": 0,
+              "ingredient_with_brand_medications": 1,
+              "ingredient_only_medications": 1,
+              "unmatched_medications": 0,
+              "usable_medications": 2,
+              "total_active_ingredients": 2,
+              "resolved_ingredients": 2,
+              "unresolved_ingredients": 0,
+              "requires_review": true
+            },
+            "unmapped_medications": [],
+            "ingredient_only_medications": [
+              {
+                "medication_index": 1,
+                "raw_name": "2.\tClarithromycin 500 mg  x 30 viên",
+                "evidence_slugs": [
+                  "clarithromycin"
+                ]
+              }
+            ],
+            "ingredient_with_brand_medications": [
+              {
+                "medication_index": 0,
+                "raw_name": "1.\tSimvastatin (Stella) 20 mg x 30 viên",
+                "brand_text": "Stella",
+                "brand_verification_status": "not_found",
+                "evidence_slugs": [
+                  "simvastatin"
+                ]
+              }
+            ],
+            "unresolved_ingredients": [],
+            "resolved_evidence_slugs": [
+              "simvastatin",
+              "clarithromycin"
+            ],
+            "unique_evidence_slugs": [
+              "clarithromycin",
+              "simvastatin"
+            ],
+            "requires_review": true,
+            "warnings": []
+          },
+          "evidence_bundle": null,
+          "warnings": [
+            "ingredient_evidence_requires_review",
+            "some_medications_require_review"
+          ],
+          "errors": [
+            "evidence_retrieval_failed"
+          ]
+        },
+        "risk_analysis": {
+          "status": "insufficient_evidence",
+          "overall_risk_level": "unknown",
+          "risk_items": [],
+          "evidence_context": null,
+          "missing_information": [],
+          "warnings": [
+            "no_evidence_available_for_analysis",
+            "safety_mapping_requires_review",
+            "safety_no_valid_evidence"
+          ],
+          "errors": []
+        },
+        "report": {
+          "status": "report_insufficient_evidence",
+          "report_type": "prescription_audit",
+          "audience": "doctor_or_pharmacist",
+          "overall_risk_level": "unknown",
+          "summary": "Chưa đủ bằng chứng để tạo báo cáo phân tích nguy cơ.",
+          "patient_context": {
+            "hospital": "Bệnh viện B",
+            "department": "Tim mạch",
+            "patient_name": "Nguyễn Văn A",
+            "age": 65,
+            "sex": "male",
+            "weight": "68 kg",
+            "address": "Quận Cầu Giấy, Hà Nội",
+            "diagnoses": [
+              "Rối loạn lipid máu"
+            ],
+            "allergies": "Không",
+            "comorbidities": "Viêm xoang",
+            "hepatic_function": "Bình thường",
+            "renal_function": "Bình thường",
+            "pregnancy_lactation": "Không",
+            "current_medications": "Không"
+          },
+          "medication_summary": [
+            {
+              "raw_name": "1.\tSimvastatin (Stella) 20 mg x 30 viên",
+              "raw_line": "1.\tSimvastatin (Stella) 20 mg x 30 viên",
+              "instruction": "Ngày uống 1 lần, mỗi lần 1 viên.",
+              "generic_text": "Simvastatin",
+              "brand_text": "Stella",
+              "mapping_status": "ingredient_with_brand",
+              "requires_review": true,
+              "warnings": [
+                "ingredient_evidence_requires_review"
+              ],
+              "active_ingredients": [
+                {
+                  "name": "Simvastatin",
+                  "evidence_slug": "simvastatin",
+                  "strength_raw": "20 mg",
+                  "strength_value": 20.0,
+                  "strength_unit": "mg"
+                }
+              ]
+            },
+            {
+              "raw_name": "2.\tClarithromycin 500 mg  x 30 viên",
+              "raw_line": "2.\tClarithromycin 500 mg  x 30 viên",
+              "instruction": "Ngày uống 2 lần, mỗi lần 1 viên.",
+              "generic_text": "Clarithromycin",
+              "brand_text": null,
+              "mapping_status": "ingredient_only",
+              "requires_review": true,
+              "warnings": [
+                "ingredient_evidence_requires_review"
+              ],
+              "active_ingredients": [
+                {
+                  "name": "Clarithromycin",
+                  "evidence_slug": "clarithromycin",
+                  "strength_raw": "500 mg",
+                  "strength_value": 500.0,
+                  "strength_unit": "mg"
+                }
+              ]
+            }
+          ],
+          "medications_requiring_review": [
+            {
+              "raw_name": "1.\tSimvastatin (Stella) 20 mg x 30 viên",
+              "raw_line": "1.\tSimvastatin (Stella) 20 mg x 30 viên",
+              "instruction": "Ngày uống 1 lần, mỗi lần 1 viên.",
+              "generic_text": "Simvastatin",
+              "brand_text": "Stella",
+              "mapping_status": "ingredient_with_brand",
+              "requires_review": true,
+              "warnings": [
+                "ingredient_evidence_requires_review"
+              ],
+              "active_ingredients": [
+                {
+                  "name": "Simvastatin",
+                  "evidence_slug": "simvastatin",
+                  "strength_raw": "20 mg",
+                  "strength_value": 20.0,
+                  "strength_unit": "mg"
+                }
+              ]
+            },
+            {
+              "raw_name": "2.\tClarithromycin 500 mg  x 30 viên",
+              "raw_line": "2.\tClarithromycin 500 mg  x 30 viên",
+              "instruction": "Ngày uống 2 lần, mỗi lần 1 viên.",
+              "generic_text": "Clarithromycin",
+              "brand_text": null,
+              "mapping_status": "ingredient_only",
+              "requires_review": true,
+              "warnings": [
+                "ingredient_evidence_requires_review"
+              ],
+              "active_ingredients": [
+                {
+                  "name": "Clarithromycin",
+                  "evidence_slug": "clarithromycin",
+                  "strength_raw": "500 mg",
+                  "strength_value": 500.0,
+                  "strength_unit": "mg"
+                }
+              ]
+            }
+          ],
+          "risk_items": [],
+          "missing_information": [],
+          "evidence_sources": [],
+          "source_count": 0,
+          "checked_query_types": [],
+          "safety_disclaimer": "Báo cáo này chỉ nhằm hỗ trợ bác sĩ/dược sĩ rà soát đơn thuốc dựa trên dữ liệu hiện có và không thay thế quyết định chuyên môn. Bác sĩ/dược sĩ là người chịu trách nhiệm đánh giá cuối cùng dựa trên tình trạng lâm sàng thực tế của bệnh nhân.",
+          "warnings": [
+            "no_evidence_available_for_analysis",
+            "safety_mapping_requires_review",
+            "safety_no_valid_evidence"
+          ],
+          "doctor_facing_warnings": [
+            "Một số dòng thuốc chưa được hệ thống nhận diện chắc chắn, cần rà soát lại."
+          ],
+          "errors": [],
+          "markdown_report": "# Báo cáo kiểm tra đơn thuốc\n\n## Kết luận tổng quan\n\n- Trạng thái: report_insufficient_evidence\n- Mức nguy cơ tổng quan: unknown\n- Tóm tắt: Chưa đủ bằng chứng để tạo báo cáo phân tích nguy cơ.\n\n## Danh sách thuốc\n\n- 1.\tSimvastatin (Stella) 20 mg x 30 viên\n  - Hoạt chất: Simvastatin\n  - Cần rà soát mapping/chuẩn hóa.\n- 2.\tClarithromycin 500 mg  x 30 viên\n  - Hoạt chất: Clarithromycin\n  - Cần rà soát mapping/chuẩn hóa.\n\n## Cảnh báo cần xem xét\n\n- Chưa đủ bằng chứng để phân tích nguy cơ trong đơn thuốc.\n\n## Thông tin còn thiếu\n\n- Không ghi nhận thông tin còn thiếu trong kết quả phân tích.\n\n## Nguồn bằng chứng\n\n- Không có nguồn bằng chứng đi kèm.\n\n## Lưu ý an toàn\n\nBáo cáo này chỉ nhằm hỗ trợ bác sĩ/dược sĩ rà soát đơn thuốc dựa trên dữ liệu hiện có và không thay thế quyết định chuyên môn. Bác sĩ/dược sĩ là người chịu trách nhiệm đánh giá cuối cùng dựa trên tình trạng lâm sàng thực tế của bệnh nhân.\n",
+          "doctor_facing_sections": {
+            "prescription_check": {
+              "title": "KẾT QUẢ KIỂM TRA ĐƠN THUỐC",
+              "summary": "Trong phạm vi dữ liệu đã truy xuất, hệ thống chưa ghi nhận điểm cần bác sĩ/dược sĩ rà soát ngoài nhóm tương tác thuốc-thuốc.",
+              "items": []
+            },
+            "interaction_check": {
+              "title": "KIỂM TRA TƯƠNG TÁC GIỮA CÁC THUỐC TRONG ĐƠN",
+              "summary": "Chưa có tín hiệu kiểm tra tương tác thuốc-thuốc trong lần rà soát này.",
+              "items": []
+            },
+            "doctor_memory": {
+              "title": "GHI CHÚ RIÊNG CỦA BÁC SĨ",
+              "summary": "Chưa có ghi chú liên quan.",
+              "items": []
+            },
+            "safety_note": {
+              "title": "LƯU Ý AN TOÀN",
+              "content": "Báo cáo này chỉ nhằm hỗ trợ bác sĩ/dược sĩ rà soát đơn thuốc dựa trên dữ liệu hiện có và không thay thế quyết định chuyên môn. Bác sĩ/dược sĩ là người chịu trách nhiệm đánh giá cuối cùng dựa trên tình trạng lâm sàng thực tế của bệnh nhân."
+            }
+          },
+          "doctor_facing_response": "KẾT QUẢ KIỂM TRA ĐƠN THUỐC\n\nTrong phạm vi dữ liệu đã truy xuất, hệ thống chưa ghi nhận điểm cần bác sĩ/dược sĩ rà soát ngoài nhóm tương tác thuốc-thuốc.\n\nKIỂM TRA TƯƠNG TÁC GIỮA CÁC THUỐC TRONG ĐƠN\n\nChưa có tín hiệu kiểm tra tương tác thuốc-thuốc trong lần rà soát này.\n\nGHI CHÚ RIÊNG CỦA BÁC SĨ\n\nChưa có ghi chú liên quan.\n\nLƯU Ý AN TOÀN\n\nBáo cáo này chỉ nhằm hỗ trợ bác sĩ/dược sĩ rà soát đơn thuốc dựa trên dữ liệu hiện có và không thay thế quyết định chuyên môn. Bác sĩ/dược sĩ là người chịu trách nhiệm đánh giá cuối cùng dựa trên tình trạng lâm sàng thực tế của bệnh nhân.",
+          "doctor_memory": {
+            "matched_notes": []
+          }
+        },
+        "doctor_memory": {
+          "matched_notes": []
+        },
+        "warnings": [
+          "ingredient_evidence_requires_review",
+          "some_medications_require_review",
+          "no_evidence_available_for_analysis",
+          "safety_mapping_requires_review",
+          "safety_no_valid_evidence",
+          "prescription_document_parser_applied",
+          "doctor_memory_retrieval_failed"
+        ],
+        "errors": [
+          "evidence_retrieval_failed"
+        ]
+      }
+    },
+    "error": null
+  },
+  "runtime": {
+    "seconds": 11.725242,
+    "milliseconds": 11725.242
+  },
+  "accuracy_evaluation": {
+    "expected_primary_finding": "T??ng t?c nghi?m tr?ng/ch?ng ch? ??nh gi?a Simvastatin v? Clarithromycin, t?ng nguy c? b?nh c?/ti?u c? v?n do ?c ch? CYP3A4.",
+    "criteria": [
+      {
+        "name": "detects_simvastatin",
+        "passed": true,
+        "weight": 20
+      },
+      {
+        "name": "detects_clarithromycin",
+        "passed": true,
+        "weight": 20
+      },
+      {
+        "name": "detects_pair_interaction",
+        "passed": true,
+        "weight": 25
+      },
+      {
+        "name": "classifies_high_or_serious_risk",
+        "passed": true,
+        "weight": 20
+      },
+      {
+        "name": "mentions_myopathy_rhabdomyolysis_or_cyp3a4_mechanism",
+        "passed": false,
+        "weight": 15
+      }
+    ],
+    "accuracy_percent": 85,
+    "method": "Weighted heuristic against the known expected primary clinical finding for this case."
+  }
+}

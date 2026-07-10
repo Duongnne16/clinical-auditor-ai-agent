@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any
 
@@ -701,7 +701,6 @@ def test_audit_includes_matching_doctor_memory_section() -> None:
     memory_section = result["report"]["doctor_facing_sections"]["doctor_memory"]
     assert memory_section["items"] == [
         {
-            "title": "Levofloxacin + Sucralfate",
             "content": "Rà soát thời điểm dùng.",
         }
     ]
@@ -728,14 +727,14 @@ def test_audit_includes_matching_doctor_memory_section() -> None:
     )
 
 
-def test_audit_memory_section_derives_display_title_for_generic_title() -> None:
+def test_audit_memory_section_omits_note_title_in_doctor_report() -> None:
     memory = FakeDoctorMemoryService(
         {
             "matched_notes": [
                 {
                     "note_id": "n1",
                     "title": "Ghi chú đơn thuốc",
-                    "note_text": "Bệnh nhân được kê Rosuvastatin 20mg do nguy cơ tim mạch cao.",
+                    "note_text": "Check blood pressure before Sildenafil use.",
                 }
             ]
         }
@@ -754,8 +753,10 @@ def test_audit_memory_section_derives_display_title_for_generic_title() -> None:
     result = service.audit_text("1. Rosuvastatin 20mg", doctor_id="doctor-1")
 
     item = result["report"]["doctor_facing_sections"]["doctor_memory"]["items"][0]
-    assert item["title"].startswith("Bệnh nhân được kê Rosuvastatin")
-    assert item["title"] != "Ghi chú đơn thuốc"
+    assert item == {"content": "Check blood pressure before Sildenafil use."}
+    response = result["report"]["doctor_facing_response"]
+    assert "Ghi chú đơn thuốc" not in response
+    assert "1. Check blood pressure before Sildenafil use." in response
 
 
 def test_audit_no_memory_does_not_alter_doctor_facing_response() -> None:
@@ -841,7 +842,7 @@ def test_doctor_memory_notes_are_sanitized_and_not_evidence_sources() -> None:
     assert "tăng liều" not in doctor_text.casefold()
     assert "đổi thuốc" not in doctor_text.casefold()
     memory_section = result["report"]["doctor_facing_sections"]["doctor_memory"]
-    assert memory_section["items"][0]["title"] == "Private note"
+    assert "title" not in memory_section["items"][0]
     assert "tăng liều" not in memory_section["items"][0]["content"].casefold()
     assert "đổi thuốc" not in memory_section["items"][0]["content"].casefold()
     assert "GHI CHÚ RIÊNG CỦA BÁC SĨ" in doctor_text

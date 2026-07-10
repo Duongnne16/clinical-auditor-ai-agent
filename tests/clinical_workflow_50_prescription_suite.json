@@ -1,0 +1,1448 @@
+{
+  "description": "50 prescription-oriented clinical workflow test cases.",
+  "generated_at": "2026-07-10T15:57:07.636984+00:00",
+  "cases": [
+    {
+      "id": "rx_01_simvastatin_clarithromycin",
+      "category": "severe_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Nguyen Van A\n- Tuoi: 65\nII. THONG TIN LAM SANG\n- Chan doan: Roi loan lipid mau\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Simvastatin 20 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien buoi toi.\n2. Clarithromycin 500 mg x 14 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "simvastatin",
+          "clarithromycin"
+        ],
+        "answer_keywords_any": [
+          "tuong tac",
+          "co",
+          "tieu co van",
+          "rhabdom",
+          "cyp3a4"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_02_warfarin_aspirin",
+      "category": "severe_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Tran Van B\n- Tuoi: 70\nII. THONG TIN LAM SANG\n- Chan doan: Rung nhi\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Warfarin 5 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Aspirin 81 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "warfarin",
+          "aspirin"
+        ],
+        "answer_keywords_any": [
+          "tuong tac",
+          "bleed",
+          "xuat huyet",
+          "chay mau",
+          "hemorrhag"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_03_sildenafil_nitroglycerin",
+      "category": "severe_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Le Van C\n- Tuoi: 62\nII. THONG TIN LAM SANG\n- Chan doan: Dau that nguc\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Sildenafil 50 mg x 4 vien\nKhi can, moi lan 1 vien.\n2. Nitroglycerin 0.5 mg x 20 vien\nKhi dau nguc, ngam 1 vien duoi luoi.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "sildenafil",
+          "nitroglycerin"
+        ],
+        "answer_keywords_any": [
+          "ha huyet ap",
+          "tuong tac",
+          "huyet ap"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_04_digoxin_clarithromycin",
+      "category": "severe_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Pham Van D\n- Tuoi: 74\nII. THONG TIN LAM SANG\n- Chan doan: Suy tim\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Digoxin 0.25 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Clarithromycin 500 mg x 14 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "digoxin",
+          "clarithromycin"
+        ],
+        "answer_keywords_any": [
+          "doc tinh",
+          "nhip tim",
+          "tuong tac"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_05_spironolactone_potassium",
+      "category": "severe_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Hoang Van E\n- Tuoi: 68\nII. THONG TIN LAM SANG\n- Chan doan: Suy tim\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Spironolactone 25 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Potassium chloride 600 mg x 20 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "spironolactone",
+          "potassium"
+        ],
+        "answer_keywords_any": [
+          "tuong tac",
+          "kal",
+          "tang kali",
+          "hyperkal"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_06_allopurinol_azathioprine",
+      "category": "severe_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Bui Van F\n- Tuoi: 55\nII. THONG TIN LAM SANG\n- Chan doan: Gout va benh tu mien\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Allopurinol 300 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Azathioprine 50 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "allopurinol",
+          "azathioprine"
+        ],
+        "answer_keywords_any": [
+          "uy xuong",
+          "doc tinh",
+          "tuong tac"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_07_methotrexate_cotrimoxazole",
+      "category": "severe_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Do Thi G\n- Tuoi: 48\nII. THONG TIN LAM SANG\n- Chan doan: Viem khop dang thap\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Methotrexate 10 mg x 4 vien\nMoi tuan uong 1 lan, moi lan 1 vien.\n2. Co-trimoxazole 960 mg x 10 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "methotrexate",
+          "trimox"
+        ],
+        "answer_keywords_any": [
+          "uy xuong",
+          "doc tinh",
+          "tuong tac"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_08_linezolid_sertraline",
+      "category": "severe_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Vu Van H\n- Tuoi: 41\nII. THONG TIN LAM SANG\n- Chan doan: Nhiem khuan da\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Linezolid 600 mg x 14 vien\nNgay uong 2 lan, moi lan 1 vien.\n2. Sertraline 50 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "linezolid",
+          "sertraline"
+        ],
+        "answer_keywords_any": [
+          "tuong tac",
+          "serotonin",
+          "kich dong",
+          "run",
+          "sot"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_09_tramadol_fluoxetine",
+      "category": "severe_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Dang Thi I\n- Tuoi: 36\nII. THONG TIN LAM SANG\n- Chan doan: Dau lung\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Tramadol 50 mg x 20 vien\nNgay uong 2 lan, moi lan 1 vien khi dau.\n2. Fluoxetine 20 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "tramadol",
+          "fluoxetine"
+        ],
+        "answer_keywords_any": [
+          "tuong tac",
+          "serotonin",
+          "kich dong",
+          "run",
+          "sot"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_10_verapamil_metoprolol",
+      "category": "severe_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Nguyen Thi K\n- Tuoi: 67\nII. THONG TIN LAM SANG\n- Chan doan: Tang huyet ap\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Verapamil 80 mg x 30 vien\nNgay uong 2 lan, moi lan 1 vien.\n2. Metoprolol 50 mg x 30 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "verapamil",
+          "metoprolol"
+        ],
+        "answer_keywords_any": [
+          "tuong tac",
+          "nhip cham",
+          "brady",
+          "ha huyet ap",
+          "block"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_11_lisinopril_spironolactone",
+      "category": "monitor_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Tran Thi L\n- Tuoi: 64\nII. THONG TIN LAM SANG\n- Chan doan: Tang huyet ap\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Lisinopril 10 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Spironolactone 25 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "lisinopril",
+          "spironolactone"
+        ],
+        "answer_keywords_any": [
+          "tuong tac",
+          "kal",
+          "tang kali",
+          "hyperkal"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_12_losartan_ibuprofen",
+      "category": "monitor_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Le Thi M\n- Tuoi: 61\nII. THONG TIN LAM SANG\n- Chan doan: Thoai hoa khop va tang huyet ap\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Losartan 50 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Ibuprofen 400 mg x 15 vien\nNgay uong 2 lan, moi lan 1 vien sau an.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "losartan",
+          "ibuprofen"
+        ],
+        "answer_keywords_any": [
+          "tuong tac",
+          "than",
+          "egfr",
+          "suy than",
+          "creatinin"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_13_furosemide_gentamicin",
+      "category": "monitor_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Pham Thi N\n- Tuoi: 58\nII. THONG TIN LAM SANG\n- Chan doan: Nhiem khuan tiet nieu\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Furosemide 40 mg x 20 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Gentamicin 80 mg x 10 ong\nNgay tiem 2 lan, moi lan 1 ong.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "furosemide",
+          "gentamicin"
+        ],
+        "answer_keywords_any": [
+          "doc tai",
+          "doc than",
+          "tuong tac"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_14_levothyroxine_calcium",
+      "category": "monitor_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Do Van O\n- Tuoi: 45\nII. THONG TIN LAM SANG\n- Chan doan: Suy giap\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Levothyroxine 100 mcg x 30 vien\nNgay uong 1 lan, moi lan 1 vien truoc an sang.\n2. Calcium carbonate 500 mg x 30 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "levothyroxine",
+          "calcium"
+        ],
+        "answer_keywords_any": [
+          "hap thu",
+          "tuong tac",
+          "tach thoi diem"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_15_alendronate_calcium",
+      "category": "monitor_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Bui Thi P\n- Tuoi: 69\nII. THONG TIN LAM SANG\n- Chan doan: Loang xuong\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Alendronate 70 mg x 4 vien\nMoi tuan uong 1 lan, moi lan 1 vien buoi sang.\n2. Calcium carbonate 500 mg x 60 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "alendronate",
+          "calcium"
+        ],
+        "answer_keywords_any": [
+          "hap thu",
+          "tuong tac",
+          "tach thoi diem"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_16_ciprofloxacin_antacid",
+      "category": "monitor_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Vu Thi Q\n- Tuoi: 34\nII. THONG TIN LAM SANG\n- Chan doan: Tieu chay nhiem khuan\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Ciprofloxacin 500 mg x 10 vien\nNgay uong 2 lan, moi lan 1 vien.\n2. Magnesium hydroxide 400 mg x 10 goi\nNgay uong 2 lan, moi lan 1 goi.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "ciprofloxacin",
+          "magnesium"
+        ],
+        "answer_keywords_any": [
+          "hap thu",
+          "tuong tac",
+          "tach thoi diem"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_17_doxycycline_iron",
+      "category": "monitor_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Nguyen Van R\n- Tuoi: 27\nII. THONG TIN LAM SANG\n- Chan doan: Mun viem\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Doxycycline 100 mg x 20 vien\nNgay uong 2 lan, moi lan 1 vien.\n2. Ferrous sulfate 325 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "doxycycline",
+          "ferrous"
+        ],
+        "answer_keywords_any": [
+          "hap thu",
+          "tuong tac",
+          "tach thoi diem"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_18_amlodipine_simvastatin",
+      "category": "monitor_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Tran Van S\n- Tuoi: 66\nII. THONG TIN LAM SANG\n- Chan doan: Tang huyet ap va roi loan lipid mau\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Amlodipine 5 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Simvastatin 40 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien buoi toi.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "amlodipine",
+          "simvastatin"
+        ],
+        "answer_keywords_any": [
+          "tuong tac",
+          "co",
+          "tieu co van",
+          "rhabdom",
+          "cyp3a4"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_19_digoxin_furosemide",
+      "category": "monitor_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Le Van T\n- Tuoi: 72\nII. THONG TIN LAM SANG\n- Chan doan: Suy tim\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Digoxin 0.25 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Furosemide 40 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "digoxin",
+          "furosemide"
+        ],
+        "answer_keywords_any": [
+          "kali",
+          "nhip tim",
+          "tuong tac"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_20_insulin_propranolol",
+      "category": "monitor_interaction",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Pham Van U\n- Tuoi: 59\nII. THONG TIN LAM SANG\n- Chan doan: Dai thao duong type 2\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Insulin glargine 100 IU/ml x 1 but\nNgay tiem 1 lan, moi lan 10 don vi.\n2. Propranolol 40 mg x 30 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "insulin",
+          "propranolol"
+        ],
+        "answer_keywords_any": [
+          "ha duong huyet",
+          "che lap",
+          "tuong tac"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_21_paracetamol_cetirizine",
+      "category": "low_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Ho Thi V\n- Tuoi: 29\nII. THONG TIN LAM SANG\n- Chan doan: Viem mui di ung\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Paracetamol 500 mg x 10 vien\nNgay uong 3 lan, moi lan 1 vien.\n2. Cetirizine 10 mg x 10 vien\nNgay uong 1 lan, moi lan 1 vien buoi toi.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "paracetamol",
+          "cetirizine"
+        ],
+        "answer_keywords_any": [
+          "theo doi",
+          "khong ghi nhan",
+          "ra soat"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_22_amoxicillin_paracetamol",
+      "category": "low_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Do Thi W\n- Tuoi: 25\nII. THONG TIN LAM SANG\n- Chan doan: Viem hong\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Amoxicillin 500 mg x 15 vien\nNgay uong 3 lan, moi lan 1 vien.\n2. Paracetamol 500 mg x 10 vien\nNgay uong 3 lan, moi lan 1 vien khi sot.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "amoxicillin",
+          "paracetamol"
+        ],
+        "answer_keywords_any": [
+          "theo doi",
+          "khong ghi nhan",
+          "ra soat"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_23_omeprazole_domperidone",
+      "category": "low_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Bui Van X\n- Tuoi: 43\nII. THONG TIN LAM SANG\n- Chan doan: Trao nguoc da day\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Omeprazole 20 mg x 14 vien\nNgay uong 2 lan, moi lan 1 vien.\n2. Domperidone 10 mg x 14 vien\nNgay uong 3 lan, moi lan 1 vien truoc an.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "omeprazole",
+          "domperidone"
+        ],
+        "answer_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "than trong"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_24_rosuvastatin_ezetimibe",
+      "category": "low_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Tran Thi Y\n- Tuoi: 63\nII. THONG TIN LAM SANG\n- Chan doan: Roi loan lipid mau\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Rosuvastatin 10 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Ezetimibe 10 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "rosuvastatin",
+          "ezetimibe"
+        ],
+        "answer_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "than trong"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_25_cefixime_paracetamol",
+      "category": "low_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Nguyen Van Z\n- Tuoi: 19\nII. THONG TIN LAM SANG\n- Chan doan: Viem hong\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Cefixime 200 mg x 10 vien\nNgay uong 2 lan, moi lan 1 vien.\n2. Paracetamol 500 mg x 10 vien\nNgay uong 3 lan, moi lan 1 vien khi sot.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "cefixime",
+          "paracetamol"
+        ],
+        "answer_keywords_any": [
+          "theo doi",
+          "khong ghi nhan",
+          "ra soat"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_26_isotretinoin_pregnancy",
+      "category": "pregnancy_contraindication",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Nguyen Thi AA\n- Tuoi: 26\nII. THONG TIN LAM SANG\n- Chan doan: Mun trung ca nang\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Co\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Isotretinoin 10 mg x 30 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {
+        "pregnancy_status": "pregnant"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "isotretinoin"
+        ],
+        "answer_keywords_any": [
+          "thai",
+          "thai",
+          "pregnan",
+          "di tat",
+          "terat"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_27_enalapril_pregnancy",
+      "category": "pregnancy_contraindication",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Le Thi AB\n- Tuoi: 31\nII. THONG TIN LAM SANG\n- Chan doan: Tang huyet ap\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Co\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Enalapril 5 mg x 30 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {
+        "pregnancy_status": "pregnant"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "enalapril"
+        ],
+        "answer_keywords_any": [
+          "thai",
+          "fet",
+          "pregnan"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_28_valproate_pregnancy",
+      "category": "pregnancy_contraindication",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Pham Thi AC\n- Tuoi: 28\nII. THONG TIN LAM SANG\n- Chan doan: Dong kinh\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Co\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Valproate 500 mg x 30 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {
+        "pregnancy_status": "pregnant"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "valproate"
+        ],
+        "answer_keywords_any": [
+          "thai",
+          "thai",
+          "pregnan",
+          "di tat",
+          "terat"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_29_warfarin_pregnancy",
+      "category": "pregnancy_contraindication",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Do Thi AD\n- Tuoi: 33\nII. THONG TIN LAM SANG\n- Chan doan: Huyet khoi tinh mach\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Co\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Warfarin 5 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {
+        "pregnancy_status": "pregnant"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "warfarin"
+        ],
+        "answer_keywords_any": [
+          "thai",
+          "pregnan",
+          "xuat huyet"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_30_ibuprofen_third_trimester",
+      "category": "pregnancy_contraindication",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Tran Thi AE\n- Tuoi: 30\nII. THONG TIN LAM SANG\n- Chan doan: Dau rang\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Co\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Ibuprofen 400 mg x 12 vien\nNgay uong 3 lan, moi lan 1 vien sau an.",
+      "patient_context": {
+        "pregnancy_status": "pregnant",
+        "trimester": 3
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "ibuprofen"
+        ],
+        "answer_keywords_any": [
+          "thai",
+          "pregnan",
+          "thai ky"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_31_metformin_egfr_low",
+      "category": "renal_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Nguyen Van AF\n- Tuoi: 73\nII. THONG TIN LAM SANG\n- Chan doan: Dai thao duong type 2\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Suy than do 4\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Metformin 850 mg x 60 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {
+        "renal_function": "eGFR 22 ml/min/1.73m2"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "metformin"
+        ],
+        "answer_keywords_any": [
+          "than",
+          "egfr",
+          "nhiem toan"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_32_nitrofurantoin_egfr_low",
+      "category": "renal_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Le Thi AG\n- Tuoi: 69\nII. THONG TIN LAM SANG\n- Chan doan: Nhiem khuan tiet nieu\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Suy than man\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Nitrofurantoin 100 mg x 10 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {
+        "renal_function": "eGFR 25 ml/min/1.73m2"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "nitrofurantoin"
+        ],
+        "answer_keywords_any": [
+          "than",
+          "egfr",
+          "hieu qua"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_33_ibuprofen_ckd",
+      "category": "renal_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Pham Van AH\n- Tuoi: 71\nII. THONG TIN LAM SANG\n- Chan doan: Thoai hoa khop\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Suy than man\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Ibuprofen 400 mg x 15 vien\nNgay uong 3 lan, moi lan 1 vien sau an.",
+      "patient_context": {
+        "renal_function": "eGFR 28 ml/min/1.73m2"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "ibuprofen"
+        ],
+        "answer_keywords_any": [
+          "than",
+          "egfr",
+          "suy than"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_34_spironolactone_ckd",
+      "category": "renal_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Do Thi AI\n- Tuoi: 76\nII. THONG TIN LAM SANG\n- Chan doan: Suy tim\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Suy than man\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Spironolactone 25 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {
+        "renal_function": "eGFR 24 ml/min/1.73m2"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "spironolactone"
+        ],
+        "answer_keywords_any": [
+          "than",
+          "kal",
+          "tang kali",
+          "hyperkal"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_35_gabapentin_ckd",
+      "category": "renal_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Tran Van AJ\n- Tuoi: 67\nII. THONG TIN LAM SANG\n- Chan doan: Dau than kinh\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Suy than man\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Gabapentin 300 mg x 30 vien\nNgay uong 3 lan, moi lan 1 vien.",
+      "patient_context": {
+        "renal_function": "eGFR 18 ml/min/1.73m2"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "gabapentin"
+        ],
+        "answer_keywords_any": [
+          "than",
+          "egfr",
+          "hieu chinh lieu"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_36_valproate_liver_disease",
+      "category": "hepatic_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Nguyen Thi AK\n- Tuoi: 40\nII. THONG TIN LAM SANG\n- Chan doan: Dong kinh\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Xo gan\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Valproate 500 mg x 30 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {
+        "hepatic_function": "Child-Pugh C"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "valproate"
+        ],
+        "answer_keywords_any": [
+          "gan",
+          "gan",
+          "men gan",
+          "hepat",
+          "doc gan"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_37_paracetamol_liver_disease",
+      "category": "hepatic_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Le Van AL\n- Tuoi: 57\nII. THONG TIN LAM SANG\n- Chan doan: Dau xuong khop\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Xo gan\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Paracetamol 500 mg x 20 vien\nNgay uong 4 lan, moi lan 2 vien.",
+      "patient_context": {
+        "hepatic_function": "Child-Pugh B"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "paracetamol"
+        ],
+        "answer_keywords_any": [
+          "gan",
+          "gan",
+          "men gan",
+          "hepat",
+          "doc gan"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_38_fluconazole_liver_disease",
+      "category": "hepatic_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Pham Thi AM\n- Tuoi: 52\nII. THONG TIN LAM SANG\n- Chan doan: Nhiem nam\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Viem gan man\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Fluconazole 150 mg x 3 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {
+        "hepatic_function": "men gan tang"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "fluconazole"
+        ],
+        "answer_keywords_any": [
+          "gan",
+          "gan",
+          "men gan",
+          "hepat",
+          "doc gan"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_39_atorvastatin_liver_disease",
+      "category": "hepatic_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Tran Thi AN\n- Tuoi: 61\nII. THONG TIN LAM SANG\n- Chan doan: Roi loan lipid mau\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Men gan tang\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Atorvastatin 40 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien buoi toi.",
+      "patient_context": {
+        "hepatic_function": "AST ALT tang gap 3 lan gioi han tren"
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "atorvastatin"
+        ],
+        "answer_keywords_any": [
+          "gan",
+          "gan",
+          "men gan",
+          "hepat",
+          "doc gan"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_40_haloperidol_parkinson",
+      "category": "disease_contraindication",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Nguyen Van AO\n- Tuoi: 72\nII. THONG TIN LAM SANG\n- Chan doan: Kich dong\n- Di ung thuoc: Khong\n- Benh nen: Parkinson\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Haloperidol 1.5 mg x 20 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {
+        "comorbidities": [
+          "Parkinson"
+        ]
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "haloperidol"
+        ],
+        "answer_keywords_any": [
+          "parkinson",
+          "ngoai thap",
+          "than trong"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_41_propranolol_asthma",
+      "category": "disease_contraindication",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Le Thi AP\n- Tuoi: 50\nII. THONG TIN LAM SANG\n- Chan doan: Run tay\n- Di ung thuoc: Khong\n- Benh nen: Hen phe quan\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Propranolol 40 mg x 30 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {
+        "comorbidities": [
+          "asthma"
+        ]
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "propranolol"
+        ],
+        "answer_keywords_any": [
+          "hen",
+          "co that phe quan",
+          "than trong"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_42_nonselective_nsaid_ulcer",
+      "category": "disease_contraindication",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Pham Van AQ\n- Tuoi: 60\nII. THONG TIN LAM SANG\n- Chan doan: Dau khop\n- Di ung thuoc: Khong\n- Benh nen: Loet da day tai phat\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Diclofenac 50 mg x 20 vien\nNgay uong 2 lan, moi lan 1 vien sau an.",
+      "patient_context": {
+        "comorbidities": [
+          "peptic ulcer"
+        ]
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "diclofenac"
+        ],
+        "answer_keywords_any": [
+          "loet",
+          "xuat huyet",
+          "da day"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_43_unknown_drug_pair_1",
+      "category": "insufficient_evidence",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Tran Thi AR\n- Tuoi: 44\nII. THONG TIN LAM SANG\n- Chan doan: Dau dau\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Xylorafin 250 mg x 10 vien\nNgay uong 2 lan, moi lan 1 vien.\n2. Noverex 5 mg x 10 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "xylorafin",
+          "noverex"
+        ],
+        "answer_keywords_any": [
+          "review",
+          "khong du bang chung",
+          "chua tim thay du bang chung",
+          "requires review"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": false
+      }
+    },
+    {
+      "id": "rx_44_unknown_drug_pair_2",
+      "category": "insufficient_evidence",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Bui Van AS\n- Tuoi: 39\nII. THONG TIN LAM SANG\n- Chan doan: Mat ngu\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Cardioprex 10 mg x 10 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Neuromedix 25 mg x 10 vien\nNgay uong 1 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "cardioprex",
+          "neuromedix"
+        ],
+        "answer_keywords_any": [
+          "review",
+          "khong du bang chung",
+          "chua tim thay du bang chung",
+          "requires review"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": false
+      }
+    },
+    {
+      "id": "rx_45_unknown_drug_single",
+      "category": "insufficient_evidence",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Do Thi AT\n- Tuoi: 46\nII. THONG TIN LAM SANG\n- Chan doan: Met moi\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Hepalorin 150 mg x 20 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "hepalorin"
+        ],
+        "answer_keywords_any": [
+          "review",
+          "khong du bang chung",
+          "chua tim thay du bang chung",
+          "requires review"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": false
+      }
+    },
+    {
+      "id": "rx_46_unknown_drug_pair_3",
+      "category": "insufficient_evidence",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Hoang Van AU\n- Tuoi: 53\nII. THONG TIN LAM SANG\n- Chan doan: Dau cot song\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Osteorix 200 mg x 20 vien\nNgay uong 2 lan, moi lan 1 vien.\n2. Myocalmex 50 mg x 20 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "osteorix",
+          "myocalmex"
+        ],
+        "answer_keywords_any": [
+          "review",
+          "khong du bang chung",
+          "chua tim thay du bang chung",
+          "requires review"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": false
+      }
+    },
+    {
+      "id": "rx_47_unknown_drug_pair_4",
+      "category": "insufficient_evidence",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Pham Thi AV\n- Tuoi: 32\nII. THONG TIN LAM SANG\n- Chan doan: Cam cum\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Viracold 500 mg x 10 vien\nNgay uong 2 lan, moi lan 1 vien.\n2. Pulmocarex 250 mg x 10 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "viracold",
+          "pulmocarex"
+        ],
+        "answer_keywords_any": [
+          "review",
+          "khong du bang chung",
+          "chua tim thay du bang chung",
+          "requires review"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": false
+      }
+    },
+    {
+      "id": "rx_48_amoxicillin_penicillin_allergy",
+      "category": "allergy_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Nguyen Van AW\n- Tuoi: 35\nII. THONG TIN LAM SANG\n- Chan doan: Viem hong\n- Di ung thuoc: Penicillin\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Amoxicillin 500 mg x 15 vien\nNgay uong 3 lan, moi lan 1 vien.",
+      "patient_context": {
+        "drug_allergies": [
+          "penicillin"
+        ]
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "amoxicillin"
+        ],
+        "answer_keywords_any": [
+          "di ung",
+          "penicillin",
+          "phan ve"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_49_ibuprofen_nsaid_allergy",
+      "category": "allergy_risk",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Le Thi AX\n- Tuoi: 42\nII. THONG TIN LAM SANG\n- Chan doan: Dau rang\n- Di ung thuoc: NSAID\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Ibuprofen 400 mg x 12 vien\nNgay uong 3 lan, moi lan 1 vien sau an.",
+      "patient_context": {
+        "drug_allergies": [
+          "NSAID"
+        ]
+      },
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "ibuprofen"
+        ],
+        "answer_keywords_any": [
+          "di ung",
+          "nsaid",
+          "phan ung"
+        ],
+        "severity_keywords_any": [
+          "high",
+          "cao",
+          "nghiem trong",
+          "major",
+          "serious",
+          "contraind",
+          "chong chi dinh"
+        ],
+        "expect_sources": true
+      }
+    },
+    {
+      "id": "rx_50_blank_context_common_rx",
+      "category": "general_prescription_check",
+      "input_text": "DON NGOAI TRU\nI. THONG TIN BENH NHAN\n- Ho va ten: Tran Van AY\n- Tuoi: 54\nII. THONG TIN LAM SANG\n- Chan doan: Tang huyet ap va dai thao duong\n- Di ung thuoc: Khong\n- Benh nen: Khong\n- Chuc nang gan: Binh thuong\n- Chuc nang than: Binh thuong\n- Thai ky/ cho con bu: Khong\n- Thuoc khac dang dung: Khong\nIII. CHI DINH DUNG THUOC\n1. Amlodipine 5 mg x 30 vien\nNgay uong 1 lan, moi lan 1 vien.\n2. Metformin 500 mg x 60 vien\nNgay uong 2 lan, moi lan 1 vien.",
+      "patient_context": {},
+      "expected": {
+        "result_type": "audit",
+        "must_contain_all": [
+          "amlodipine",
+          "metformin"
+        ],
+        "answer_keywords_any": [
+          "theo doi",
+          "ra soat",
+          "than trong"
+        ],
+        "severity_keywords_any": [
+          "theo doi",
+          "can duoc ra soat",
+          "monitor",
+          "moderate",
+          "trung binh",
+          "than trong"
+        ],
+        "expect_sources": true
+      }
+    }
+  ]
+}
